@@ -14,24 +14,31 @@
     </header>
 
     <section class="card controls">
-      <label class="field">
-        <span class="field-label">选择设备</span>
-        <select id="device-select" class="select"></select>
-      </label>
+      <div class="device-picker">
+        <div class="device-picker-head">
+          <span class="field-label">选择设备</span>
+          <span class="selected-count" id="selected-count">已选 0 台</span>
+          <span class="device-picker-actions">
+            <button id="select-all-btn" type="button" class="btn btn-mini btn-secondary">全选</button>
+            <button id="clear-all-btn" type="button" class="btn btn-mini btn-secondary">清空</button>
+          </span>
+        </div>
+        <div class="device-chips" id="device-chips" role="group" aria-label="设备多选"></div>
+      </div>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </section>
 
     <section class="cards">
       <div class="card metric">
         <div class="metric-head">
-          <span class="metric-title">下载速率</span>
+          <span class="metric-title" id="rx-title">下载速率</span>
           <span class="metric-tag rx">RX</span>
         </div>
         <div class="metric-value" id="rx-value">—</div>
       </div>
       <div class="card metric">
         <div class="metric-head">
-          <span class="metric-title">上传速率</span>
+          <span class="metric-title" id="tx-title">上传速率</span>
           <span class="metric-tag tx">TX</span>
         </div>
         <div class="metric-value" id="tx-value">—</div>
@@ -42,6 +49,21 @@
       <div class="history-head">
         <h2>历史流量曲线</h2>
         <div class="history-tools">
+          <label class="field">
+            <span class="field-label">显示方式</span>
+            <select id="mode-select" class="select select-narrow">
+              <option value="separate">分开查看</option>
+              <option value="overlay">叠加查看</option>
+            </select>
+          </label>
+          <label class="field" id="metric-field" hidden>
+            <span class="field-label">指标</span>
+            <select id="metric-select" class="select select-narrow">
+              <option value="both">下载+上传</option>
+              <option value="rx">下载</option>
+              <option value="tx">上传</option>
+            </select>
+          </label>
           <label class="field">
             <span class="field-label">时间范围</span>
             <select id="range-select" class="select"></select>
@@ -60,9 +82,7 @@
           <button id="reset-btn" type="button" class="btn btn-secondary">重置</button>
         </div>
       </div>
-      <div class="chart-box">
-        <canvas id="traffic-chart"></canvas>
-      </div>
+      <div class="charts-container" id="charts-container"></div>
       <p class="hint" id="chart-hint"></p>
     </section>
   </div>
