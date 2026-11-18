@@ -210,6 +210,36 @@ body {
 
 .hint.error { color: #d64545; }
 
+.datetime {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: #fff;
+  font-family: inherit;
+}
+
+.datetime:focus {
+  outline: none;
+  border-color: var(--rx);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.15);
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--rx);
+  border: 1px solid var(--rx);
+}
+
+.btn-secondary:hover { background: rgba(47, 111, 237, 0.08); }
+
+.tools-sep {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 @media (max-width: 600px) {
   .page { padding: 16px 12px 32px; }
   .header h1 { font-size: 1.4rem; }

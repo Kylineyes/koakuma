@@ -46,7 +46,18 @@
             <span class="field-label">时间范围</span>
             <select id="range-select" class="select"></select>
           </label>
-          <button id="refresh-btn" type="button" class="btn">刷新</button>
+          <span class="tools-sep">或自定义时间段</span>
+          <label class="field">
+            <span class="field-label">从</span>
+            <input id="from-input" type="datetime-local" class="datetime">
+          </label>
+          <label class="field">
+            <span class="field-label">至</span>
+            <input id="to-input" type="datetime-local" class="datetime">
+          </label>
+          <button id="apply-btn" type="button" class="btn">查看</button>
+          <button id="refresh-btn" type="button" class="btn btn-secondary">刷新</button>
+          <button id="reset-btn" type="button" class="btn btn-secondary">重置</button>
         </div>
       </div>
       <div class="chart-box">
