@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# koakuma 分设备流量采集守护进程（OpenWrt procd 服务脚本）
+# 安装：cp scripts/koakuma.init /etc/init.d/koakuma
+#       chmod +x /etc/init.d/koakuma
+#       /etc/init.d/koakuma enable && /etc/init.d/koakuma start
+START=95
+STOP=10
+USE_PROCD=1
+
+PROG=/data/other_vol/koakuma/koakuma
+DB=/data/other_vol/koakuma/traffic.db
+LISTEN=0.0.0.0:8686
+
+start_service() {
+    procd_open_instance
+    procd_set_param command "$PROG" --db "$DB" --listen "$LISTEN"
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
