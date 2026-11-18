@@ -30,8 +30,105 @@ var PALETTE = [
 ];
 
 // 分开查看时每条曲线的固定色：下载=蓝，上传=橙，保持语义一致。
-var RX_COLOR = '#2f6fed';
-var TX_COLOR = '#e8833a';
+// 曲线颜色跟随主题；分开查看保持 RX/TX 语义色。
+var RX_COLOR = '#3559d9';
+var TX_COLOR = '#a45d09';
+
+// 临界阻尼弹簧（ζ=1）插值：position/velocity 为当前状态，stiffness 可调。
+// 返回原地更新的状态；每个元素同一时间仅运行一个动画。
+function springTo(element, target, stiffness) {
+  if (!element) { return; }
+  if (element._springFrame) { cancelAnimationFrame(element._springFrame); }
+  var reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || !window.requestAnimationFrame) {
+    element.style.setProperty('--spring-scale', target);
+    return;
+  }
+  var state = { position: Number(element._springValue) || 1, velocity: 0 };
+  var previous = performance.now();
+  var k = stiffness || 180;
+  function frame(now) {
+    var dt = Math.min((now - previous) / 1000, 0.032);
+    previous = now;
+    // 半隐式欧拉：临界阻尼角频率 ω=√k，加速度=-2ωv-ω²(x-target)。
+    var omega = Math.sqrt(k);
+    var acceleration = -2 * omega * state.velocity - omega * omega * (state.position - target);
+    state.velocity += acceleration * dt;
+    state.position += state.velocity * dt;
+    element.style.setProperty('--spring-scale', state.position.toFixed(4));
+    element._springValue = state.position;
+    if (Math.abs(state.position - target) > 0.001 || Math.abs(state.velocity) > 0.001) {
+      element._springFrame = requestAnimationFrame(frame);
+    } else {
+      element.style.setProperty('--spring-scale', target);
+      element._springValue = target;
+      element._springFrame = null;
+    }
+  }
+  element._springFrame = requestAnimationFrame(frame);
+}
+function bindPressSpring(element) {
+  if (!element) { return; }
+  element.classList.add('spring-press');
+  element.addEventListener('pointerdown', function () { springTo(element, 0.965, 220); });
+  element.addEventListener('pointerup', function () { springTo(element, 1, 180); });
+  element.addEventListener('pointercancel', function () { springTo(element, 1, 180); });
+  element.addEventListener('pointerleave', function () { springTo(element, 1, 180); });
+  element.addEventListener('blur', function () { springTo(element, 1, 180); });
+}
+
+function themeToken(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function syncThemeColors() {
+  RX_COLOR = themeToken('--rx') || '#3559d9';
+  TX_COLOR = themeToken('--tx') || '#a45d09';
+}
+function applyTheme(theme, persist) {
+  var dark = theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  var action = dark ? '切换到浅色模式' : '切换到深色模式';
+  if (themeToggle) {
+    themeToggle.setAttribute('aria-label', action);
+    themeToggle.setAttribute('title', action);
+    themeToggle.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  }
+  if (themeLabel) { themeLabel.textContent = dark ? '浅色' : '深色'; }
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) { meta.content = dark ? '#10131b' : '#f3f5fa'; }
+  if (persist) {
+    try { localStorage.setItem('koakuma-theme', dark ? 'dark' : 'light'); } catch (e) { /* 隐私模式下不持久化 */ }
+  }
+  syncThemeColors();
+  // Chart.js 画布不随 CSS 自动变色，重建后沿用当前视图和数据。
+  if (charts.length) {
+    chartsKey = '';
+    refreshSeries();
+  }
+}
+function initTheme() {
+  applyTheme(document.documentElement.dataset.theme || 'light', false);
+  bindPressSpring(themeToggle);
+  if (themeToggle) {
+    themeToggle.addEventListener('click', function () {
+      document.documentElement.classList.add('theme-enter');
+      applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+      setTimeout(function () { document.documentElement.classList.remove('theme-enter'); }, 500);
+    });
+  }
+  // 未手动选择时跟随系统；手动选择后不再覆盖。
+  if (window.matchMedia) {
+    var query = matchMedia('(prefers-color-scheme: dark)');
+    var listener = function (event) {
+      var saved = null;
+      try { saved = localStorage.getItem('koakuma-theme'); } catch (e) { /* 忽略 */ }
+      if (!saved) { applyTheme(event.matches ? 'dark' : 'light', false); }
+    };
+    if (query.addEventListener) { query.addEventListener('change', listener); }
+    else if (query.addListener) { query.addListener(listener); }
+  }
+}
 
 function colorForIndex(i) {
   var n = PALETTE.length;
@@ -58,6 +155,8 @@ var txTitle = document.getElementById('tx-title');
 var chartHint = document.getElementById('chart-hint');
 var statusEl = document.getElementById('status');
 var chartsContainer = document.getElementById('charts-container');
+var themeToggle = document.getElementById('theme-toggle');
+var themeLabel = document.getElementById('theme-label');
 
 // 设备列表与选中状态。
 var devices = [];
@@ -226,6 +325,9 @@ function renderChips() {
     chip.type = 'button';
     chip.className = 'device-chip' + (selectedIds.indexOf(id) >= 0 ? ' active' : '');
     chip.setAttribute('data-dev-id', id);
+    chip.setAttribute('aria-pressed', selectedIds.indexOf(id) >= 0 ? 'true' : 'false');
+    chip.setAttribute('aria-label', (d.self === true ? '本机，' : '') + deviceName(d) + '，' + (d.ip || '未知 IP'));
+    bindPressSpring(chip);
 
     var dot = document.createElement('span');
     dot.className = 'chip-dot';
@@ -240,6 +342,12 @@ function renderChips() {
     // 显示格式：★本机 name（ip）[mac]
     label.textContent = (d.self === true ? '★本机 ' : '') + name + '（' + ip + '）[' + mac + ']';
     chip.appendChild(label);
+
+    var check = document.createElement('span');
+    check.className = 'chip-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.textContent = '✓';
+    chip.appendChild(check);
 
     (function (devId) {
       chip.addEventListener('click', function () { toggleSelect(devId); });
@@ -434,21 +542,23 @@ function baseOptions() {
           maxRotation: 0,
           autoSkip: true,
           maxTicksLimit: 8,
+          color: themeToken('--muted'),
           callback: function (value) { return formatTimeTick(value); }
         },
-        grid: { color: 'rgba(16, 24, 40, 0.06)' }
+        grid: { color: themeToken('--chart-grid') }
       },
       y: {
         beginAtZero: true,
         ticks: {
           maxTicksLimit: 6,
+          color: themeToken('--muted'),
           callback: function (value) { return formatRate(value); }
         },
-        grid: { color: 'rgba(16, 24, 40, 0.06)' }
+        grid: { color: themeToken('--chart-grid') }
       }
     },
     plugins: {
-      legend: { labels: { boxWidth: 12, usePointStyle: true } },
+      legend: { labels: { boxWidth: 12, usePointStyle: true, color: themeToken('--text-secondary') } },
       tooltip: {
         callbacks: {
           title: function (items) {
@@ -528,6 +638,9 @@ function createChartCard(titleText, datasets, color) {
   card.appendChild(box);
 
   chartsContainer.appendChild(card);
+  if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    card.classList.add('chart-enter');
+  }
 
   var inst = new Chart(canvasEl.getContext('2d'), {
     type: 'line',
@@ -570,6 +683,10 @@ function ensureCharts(ids) {
 function updateSeparateData(results) {
   for (var i = 0; i < charts.length && i < results.length; i++) {
     var arr = buildPointArrays(results[i]);
+    charts[i].data.datasets[0].borderColor = RX_COLOR;
+    charts[i].data.datasets[0].backgroundColor = RX_COLOR;
+    charts[i].data.datasets[1].borderColor = TX_COLOR;
+    charts[i].data.datasets[1].backgroundColor = TX_COLOR;
     charts[i].data.datasets[0].data = arr.rx;
     charts[i].data.datasets[1].data = arr.tx;
     charts[i].update('none');
@@ -748,6 +865,7 @@ function manualRefresh() {
 }
 
 async function init() {
+  initTheme();
   initRangeSelect();
   if (modeSelect) { modeSelect.value = 'separate'; }
   if (metricSelect) { metricSelect.value = 'both'; }
@@ -767,6 +885,7 @@ async function init() {
   if (rangeSelect) { rangeSelect.addEventListener('change', onRangeChange); }
   if (modeSelect) { modeSelect.addEventListener('change', onModeChange); }
   if (metricSelect) { metricSelect.addEventListener('change', onMetricChange); }
+  [selectAllBtn, clearAllBtn, refreshBtn, applyBtn, resetBtn].forEach(bindPressSpring);
   if (selectAllBtn) { selectAllBtn.addEventListener('click', selectAllDevices); }
   if (clearAllBtn) { clearAllBtn.addEventListener('click', clearAllDevices); }
 
