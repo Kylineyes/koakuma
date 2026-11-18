@@ -1,0 +1,7 @@
+# koakuma 设备别名配置示例
+# 格式：MAC = 友好名称（大小写不敏感；# 开头为注释；也支持用 Tab/空格分隔）
+#
+# 复制到 /data/other_vol/koakuma/aliases.conf 并按需修改，约 10 秒内自动生效。
+
+AA:BB:CC:DD:EE:FF = 客厅电视
+11:22:33:44:55:66 = 书房电脑
