@@ -3,7 +3,7 @@
 // koakuma 前端监控脚本：拉取设备列表、实时速率与历史曲线。
 // 所有请求均为同源相对路径，响应为 UTF-8 JSON。
 
-// 时间范围配置：每项包含 layer（采样层）与 span（回溯秒数）。
+// 预设时间范围：每项包含 layer（采样层）与 span（回溯秒数）。
 // layer：a = 10 秒原始，b = 1 分钟均值，c = 10 分钟均值。
 var RANGES = [
   { key: '1h',   label: '近 1 小时（10 秒原始）',  layer: 'a', span: 3600 },
@@ -17,12 +17,16 @@ var RANGES = [
 // 实时刷新间隔（毫秒）与近实时范围的历史刷新间隔（毫秒）。
 var LATEST_INTERVAL = 5000;
 var SERIES_INTERVAL = 10000;
-// 回溯跨度不超过该值（秒）时，视为近实时范围，自动刷新历史曲线。
+// 预设范围回溯跨度不超过该值（秒）时，视为近实时范围，自动刷新历史曲线。
 var REALTIME_MAX_SPAN = 86400;
 
 var deviceSelect = document.getElementById('device-select');
 var rangeSelect = document.getElementById('range-select');
 var refreshBtn = document.getElementById('refresh-btn');
+var applyBtn = document.getElementById('apply-btn');
+var resetBtn = document.getElementById('reset-btn');
+var fromInput = document.getElementById('from-input');
+var toInput = document.getElementById('to-input');
 var rxValue = document.getElementById('rx-value');
 var txValue = document.getElementById('tx-value');
 var chartHint = document.getElementById('chart-hint');
@@ -32,6 +36,12 @@ var canvas = document.getElementById('traffic-chart');
 var chart = null;
 var latestTimer = null;
 var seriesTimer = null;
+// 是否处于“自定义时间段”模式；此模式下历史曲线停止自动刷新。
+var customMode = false;
+// 当前曲线实际使用的回溯跨度（秒），用于 X 轴刻度格式选择。
+var currentSpan = 86400;
+// 当前历史曲线是否在自动刷新。
+var autoRefreshOn = false;
 
 // 将字节/秒格式化为人类可读单位：B/s、KB/s、MB/s、GB/s。
 function formatRate(bytesPerSec) {
@@ -64,12 +74,38 @@ function formatDateTime(ms) {
     ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
 }
 
-// 根据当前范围格式化 X 轴刻度：跨度较短显示时分，较长显示月日。
+// 将 Date 格式化为 datetime-local 输入所需的值：YYYY-MM-DDTHH:mm。
+function toLocalInputValue(date) {
+  return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) +
+    'T' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
+}
+
+// 解析 datetime-local 输入为 Unix 秒；非法返回 null。
+function parseInputSecs(el) {
+  if (!el || !el.value) { return null; }
+  var t = new Date(el.value).getTime();
+  if (isNaN(t)) { return null; }
+  return Math.floor(t / 1000);
+}
+
+// 依据跨度选择采样层：<= 6 小时用 10 秒原始，<= 7 天用 1 分钟，否则用 10 分钟。
+function pickLayerBySpan(spanSecs) {
+  if (spanSecs <= 6 * 3600) { return 'a'; }
+  if (spanSecs <= 7 * 86400) { return 'b'; }
+  return 'c';
+}
+
+function layerName(layer) {
+  if (layer === 'a') { return '10 秒原始'; }
+  if (layer === 'b') { return '1 分钟'; }
+  return '10 分钟';
+}
+
+// 根据当前跨度格式化 X 轴刻度：跨度较短显示时分，较长显示月日。
 function formatTimeTick(ms) {
   var d = new Date(Number(ms));
   if (isNaN(d.getTime())) { return ''; }
-  var range = getSelectedRange();
-  var span = range ? range.span : 86400;
+  var span = currentSpan || 86400;
   if (span <= 172800) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
@@ -121,7 +157,7 @@ function initRangeSelect() {
   rangeSelect.selectedIndex = 0;
 }
 
-// 拉取设备列表并填充设备下拉，默认选中第一个。
+// 拉取设备列表并填充设备下拉；标记“本机”设备并默认选中它。
 async function loadDevices() {
   setStatus('正在加载设备列表…', false);
   var res = await fetch('/api/devices', { headers: { 'Accept': 'application/json' } });
@@ -134,6 +170,7 @@ async function loadDevices() {
   }
 
   deviceSelect.innerHTML = '';
+  var selfIndex = -1;
   for (var i = 0; i < list.length; i++) {
     var d = list[i] || {};
     var opt = document.createElement('option');
@@ -141,8 +178,10 @@ async function loadDevices() {
     var name = d.name ? d.name : '未命名设备';
     var ip = d.ip ? d.ip : '未知 IP';
     var mac = d.mac ? d.mac : '未知 MAC';
-    // 显示格式：name（ip）[mac]
-    opt.textContent = name + '（' + ip + '）[' + mac + ']';
+    var isSelf = d.self === true;
+    if (isSelf) { selfIndex = i; }
+    // 显示格式：[★本机] name（ip）[mac]
+    opt.textContent = (isSelf ? '★【本机】 ' : '') + name + '（' + ip + '）[' + mac + ']';
     deviceSelect.appendChild(opt);
   }
 
@@ -154,8 +193,13 @@ async function loadDevices() {
     return;
   }
 
-  deviceSelect.selectedIndex = 0;
-  setStatus('设备列表已更新（共 ' + list.length + ' 台）', false);
+  // 默认选中“本机”设备；若无法识别本机则选第一个。
+  deviceSelect.selectedIndex = selfIndex >= 0 ? selfIndex : 0;
+  if (selfIndex >= 0) {
+    setStatus('设备列表已更新（共 ' + list.length + ' 台，已定位到本机）', false);
+  } else {
+    setStatus('设备列表已更新（共 ' + list.length + ' 台）', false);
+  }
 }
 
 // 拉取最近一次采样，展示所选设备的下载/上传实时速率。
@@ -267,16 +311,38 @@ function createChart() {
   return chart;
 }
 
-// 按当前设备与时间范围拉取历史序列并重绘。
+// 计算当前要查询的视图参数（预设范围或自定义时间段）。
+function computeView() {
+  if (customMode) {
+    var f = parseInputSecs(fromInput);
+    var t = parseInputSecs(toInput);
+    if (f === null || t === null) { return { error: '请选择完整的开始与结束时间' }; }
+    if (t <= f) { return { error: '结束时间必须晚于开始时间' }; }
+    var span = t - f;
+    var layer = pickLayerBySpan(span);
+    return {
+      layer: layer,
+      from: f,
+      to: t,
+      span: span,
+      label: formatDateTime(f * 1000) + ' ~ ' + formatDateTime(t * 1000) + '（' + layerName(layer) + '）'
+    };
+  }
+  var range = getSelectedRange();
+  var to2 = Math.floor(Date.now() / 1000);
+  return { layer: range.layer, from: to2 - range.span, to: to2, span: range.span, label: range.label };
+}
+
+// 按当前视图拉取历史序列并重绘。
 async function refreshSeries() {
   var dev = getSelectedDev();
   if (dev === null) { return; }
-  var range = getSelectedRange();
-  var to = Math.floor(Date.now() / 1000);
-  var from = to - range.span;
+  var view = computeView();
+  if (view.error) { setHint(view.error, true); return; }
+  currentSpan = view.span;
   var url = '/api/series?dev=' + encodeURIComponent(dev) +
-    '&layer=' + encodeURIComponent(range.layer) +
-    '&from=' + from + '&to=' + to;
+    '&layer=' + encodeURIComponent(view.layer) +
+    '&from=' + view.from + '&to=' + view.to;
 
   setHint('正在加载历史数据…', false);
   try {
@@ -305,25 +371,28 @@ async function refreshSeries() {
     c.data.datasets[1].data = tx;
     c.update('none');
 
+    var suffix = autoRefreshOn ? '（自动刷新中）' : '（已暂停自动刷新）';
     if (points.length === 0) {
-      setHint('该时间范围内暂无数据。', false);
+      setHint('该时间段内暂无数据。' + suffix, false);
     } else {
-      setHint('共 ' + points.length + ' 个数据点（' + range.label + '）。', false);
+      setHint('共 ' + points.length + ' 个数据点 · ' + view.label + suffix, false);
     }
   } catch (err) {
     setHint(err && err.message ? err.message : '历史数据加载失败', true);
   }
 }
 
-// 重新装载所选设备的历史曲线，并按范围重启自动刷新定时器。
+// 重新装载所选设备的历史曲线，并按当前模式决定是否启动自动刷新定时器。
+// 预设近实时范围 -> 自动刷新；自定义时间段 -> 停止自动刷新。
 function reloadSeriesForSelection() {
   if (seriesTimer !== null) {
     clearInterval(seriesTimer);
     seriesTimer = null;
   }
+  var view = computeView();
+  autoRefreshOn = (!view.error && !customMode && view.span <= REALTIME_MAX_SPAN);
   refreshSeries();
-  var range = getSelectedRange();
-  if (range && range.span <= REALTIME_MAX_SPAN) {
+  if (autoRefreshOn) {
     seriesTimer = setInterval(refreshSeries, SERIES_INTERVAL);
   }
 }
@@ -334,20 +403,46 @@ function onDeviceChange() {
 }
 
 function onRangeChange() {
+  // 选择了预设范围即退出自定义模式
+  customMode = false;
   reloadSeriesForSelection();
+}
+
+// 应用自定义时间段：此模式下历史曲线停止自动刷新。
+function applyCustomRange() {
+  var f = parseInputSecs(fromInput);
+  var t = parseInputSecs(toInput);
+  if (f === null || t === null) { setHint('请选择完整的开始与结束时间', true); return; }
+  if (t <= f) { setHint('结束时间必须晚于开始时间', true); return; }
+  customMode = true;
+  reloadSeriesForSelection();
+  setStatus('已切换到自定义时间段（历史曲线已暂停自动刷新）', false);
+}
+
+// 重置为初始状态：默认“近 1 小时”并恢复自动刷新。
+function resetChart() {
+  customMode = false;
+  if (fromInput) { fromInput.value = ''; }
+  if (toInput) { toInput.value = ''; }
+  if (rangeSelect) { rangeSelect.selectedIndex = 0; }
+  reloadSeriesForSelection();
+  setStatus('已重置为初始状态（自动更新）', false);
 }
 
 async function init() {
   initRangeSelect();
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', function () { refreshSeries(); });
-  }
-  if (rangeSelect) {
-    rangeSelect.addEventListener('change', onRangeChange);
-  }
-  if (deviceSelect) {
-    deviceSelect.addEventListener('change', onDeviceChange);
-  }
+
+  // 预填自定义时间段为最近 1 小时，方便直接查看（初始模式仍为预设自动刷新）。
+  var now = new Date();
+  var hourAgo = new Date(now.getTime() - 3600 * 1000);
+  if (fromInput) { fromInput.value = toLocalInputValue(hourAgo); }
+  if (toInput) { toInput.value = toLocalInputValue(now); }
+
+  if (refreshBtn) { refreshBtn.addEventListener('click', function () { refreshSeries(); }); }
+  if (applyBtn) { applyBtn.addEventListener('click', applyCustomRange); }
+  if (resetBtn) { resetBtn.addEventListener('click', resetChart); }
+  if (rangeSelect) { rangeSelect.addEventListener('change', onRangeChange); }
+  if (deviceSelect) { deviceSelect.addEventListener('change', onDeviceChange); }
 
   try {
     await loadDevices();

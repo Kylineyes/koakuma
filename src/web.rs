@@ -65,13 +65,20 @@ pub fn serve(db_path: String, listen_addr: String) {
         };
         eprintln!("[web] HTTP 服务已启动：http://{}", listen_addr);
         for request in server.incoming_requests() {
-            let resp = handle(&request.url().to_string(), &db_path);
+            // 用请求来源 IP 判断“本机设备”（浏览器所在的那台机器）
+            let client_ip = request.remote_addr().map(|a| normalize_ip(&a.ip().to_string()));
+            let resp = handle(&request.url().to_string(), &db_path, client_ip.as_deref());
             let _ = request.respond(resp);
         }
     });
 }
 
-fn handle(url: &str, db_path: &str) -> Resp {
+/// 归一化 IP 字符串（去除 IPv4-mapped IPv6 前缀）。
+fn normalize_ip(s: &str) -> String {
+    s.strip_prefix("::ffff:").unwrap_or(s).to_string()
+}
+
+fn handle(url: &str, db_path: &str, client_ip: Option<&str>) -> Resp {
     let path = url.split('?').next().unwrap_or("/");
     match path {
         "/" | "/index.html" => respond_body("text/html; charset=utf-8", 200, INDEX_HTML),
@@ -79,14 +86,14 @@ fn handle(url: &str, db_path: &str) -> Resp {
         "/style.css" => respond_body("text/css; charset=utf-8", 200, STYLE_CSS),
         "/vendor/chart.umd.min.js" => respond_body("application/javascript; charset=utf-8", 200, CHART_JS),
         "/favicon.ico" => respond_body("text/plain; charset=utf-8", 204, ""),
-        "/api/devices" => api_devices(db_path),
+        "/api/devices" => api_devices(db_path, client_ip),
         "/api/latest" => api_latest(db_path),
         "/api/series" => api_series(db_path, url),
         _ => respond_body("text/plain; charset=utf-8", 404, "未找到页面"),
     }
 }
 
-fn api_devices(db_path: &str) -> Resp {
+fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {
     let conn = match db::open(db_path) {
         Ok(c) => c,
         Err(e) => return json_resp(500, &json!({"error": format!("打开数据库失败：{}", e)})),
@@ -98,12 +105,19 @@ fn api_devices(db_path: &str) -> Resp {
              ORDER BY (name IS NULL OR name = ''), name COLLATE NOCASE, id",
         )?;
         let it = stmt.query_map([], |r| {
+            let ip: String = r.get(2)?;
+            // 与请求来源 IP 相同的设备即“本机”
+            let is_self = match client_ip {
+                Some(c) => !c.is_empty() && c == ip,
+                None => false,
+            };
             Ok(json!({
                 "id": r.get::<_, i64>(0)?,
                 "mac": r.get::<_, String>(1)?,
-                "ip": r.get::<_, String>(2)?,
+                "ip": ip,
                 "name": r.get::<_, String>(3)?,
                 "last_seen": r.get::<_, i64>(4)?,
+                "self": is_self,
             }))
         })?;
         let mut v = Vec::new();
