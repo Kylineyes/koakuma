@@ -1,0 +1,4 @@
+# 交叉编译到 aarch64 musl 静态目标时使用的链接器（由 cargo-zigbuild 提供包装）
+[target.aarch64-unknown-linux-musl]
+# 使用 cargo zigbuild 时无需手动指定 linker，zig 会自动接管；
+# 此文件用于记录目标专用选项。
