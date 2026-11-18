@@ -90,6 +90,43 @@ KOAKUMA_USER="<用户名>" \
 bash scripts/deploy.sh
 ```
 
+## 运行与配置
+
+二进制为单文件静态程序，部署后可直接运行；生产环境建议用 procd 托管实现开机自启。
+
+### 命令行参数
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--db <路径>` | 数据库文件路径 | `/data/other_vol/koakuma/traffic.db` |
+| `--interval <秒>` | 采样周期 | `10` |
+| `--listen <地址:端口>` | 内置 HTTP 监听地址 | `0.0.0.0:8686` |
+| `--once` | 只采样一次并落库后退出（部署自检用） | 关闭 |
+| `--ubus-json <路径>` | 从本地文件读取 trafficd JSON（本地调试用） | 无 |
+
+以上均可用环境变量覆盖：`KOAKUMA_DB`、`KOAKUMA_INTERVAL`、`KOAKUMA_LISTEN`、`KOAKUMA_A_RETAIN_DAYS`、`KOAKUMA_B_RETAIN_DAYS`、`KOAKUMA_C_RETAIN_DAYS`、`KOAKUMA_UBUS_JSON_FILE`。
+
+### procd 服务（OpenWrt）
+
+仓库提供 `scripts/koakuma.init`，安装为开机自启服务：
+
+```sh
+cp scripts/koakuma.init /etc/init.d/koakuma
+chmod +x /etc/init.d/koakuma
+/etc/init.d/koakuma enable
+/etc/init.d/koakuma start
+```
+
+### 访问
+
+浏览器打开 `http://<路由器地址>:8686/` 即可查看分设备实时速率与历史曲线。
+
+### 数据接口
+
+- `GET /api/devices`：设备清单（id / mac / ip / name / last_seen）
+- `GET /api/latest`：最近一次采样的每设备实时速率（字节/秒）
+- `GET /api/series?dev=<id>&layer=<a|b|c>&from=<unix>&to=<unix>`：指定设备与精度层的历史序列
+
 ## 许可证
 
 见 [LICENSE](./LICENSE)。
