@@ -103,8 +103,21 @@ bash scripts/deploy.sh
 | `--listen <地址:端口>` | 内置 HTTP 监听地址 | `0.0.0.0:8686` |
 | `--once` | 只采样一次并落库后退出（部署自检用） | 关闭 |
 | `--ubus-json <路径>` | 从本地文件读取 trafficd JSON（本地调试用） | 无 |
+| `--aliases <路径>` | 设备别名配置（MAC=名称） | `/data/other_vol/koakuma/aliases.conf` |
 
-以上均可用环境变量覆盖：`KOAKUMA_DB`、`KOAKUMA_INTERVAL`、`KOAKUMA_LISTEN`、`KOAKUMA_A_RETAIN_DAYS`、`KOAKUMA_B_RETAIN_DAYS`、`KOAKUMA_C_RETAIN_DAYS`、`KOAKUMA_UBUS_JSON_FILE`。
+以上均可用环境变量覆盖：`KOAKUMA_DB`、`KOAKUMA_INTERVAL`、`KOAKUMA_LISTEN`、`KOAKUMA_A_RETAIN_DAYS`、`KOAKUMA_B_RETAIN_DAYS`、`KOAKUMA_C_RETAIN_DAYS`、`KOAKUMA_UBUS_JSON_FILE`、`KOAKUMA_ALIASES`。
+
+### 设备别名（显示友好名称）
+
+设备名默认取 `trafficd` 的名称；取不到时会显示成 MAC 派生名（如 `74563cc98269`）。可配置别名文件，按 MAC 覆盖为友好名称（大小写不敏感，`#` 开头为注释，支持 `=`、Tab 或空格分隔）：
+
+```conf
+# MAC = 友好名称
+AA:BB:CC:DD:EE:FF = 客厅电视
+11:22:33:44:55:66  书房电脑
+```
+
+默认路径 `/data/other_vol/koakuma/aliases.conf`，可用 `--aliases <路径>` 或环境变量 `KOAKUMA_ALIASES` 指定；文件修改后约一个采样周期（10 秒）内自动生效，无需重启。示例见 `docs/aliases.conf.example`。
 
 ### procd 服务（OpenWrt）
 

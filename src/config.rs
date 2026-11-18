@@ -20,6 +20,8 @@ pub struct Config {
     pub once: bool,
     /// 从本地文件读取 trafficd JSON（本地测试用），设置后优先于调用 ubus
     pub ubus_json_file: Option<String>,
+    /// 设备别名配置文件路径（MAC=名称），文件不存在则忽略
+    pub aliases_path: String,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             listen_addr: "0.0.0.0:8686".to_string(),
             once: false,
             ubus_json_file: None,
+            aliases_path: "/data/other_vol/koakuma/aliases.conf".to_string(),
         }
     }
 }
@@ -72,6 +75,9 @@ impl Config {
         if let Ok(v) = env::var("KOAKUMA_UBUS_JSON_FILE") {
             cfg.ubus_json_file = Some(v);
         }
+        if let Ok(v) = env::var("KOAKUMA_ALIASES") {
+            cfg.aliases_path = v;
+        }
 
         // 命令行参数（覆盖环境变量）
         let args: Vec<String> = env::args().collect();
@@ -105,6 +111,12 @@ impl Config {
                         cfg.ubus_json_file = Some(args[i].clone());
                     }
                 }
+                "--aliases" => {
+                    i += 1;
+                    if i < args.len() {
+                        cfg.aliases_path = args[i].clone();
+                    }
+                }
                 "-h" | "--help" => {
                     print_help();
                     std::process::exit(0);
@@ -134,9 +146,10 @@ const HELP_TEXT: &str = "koakuma —— 分设备网络流量采集守护进程
   --interval <秒>        采样周期（默认 10 秒）
   --listen <地址:端口>   内置 HTTP 监听地址（默认 0.0.0.0:8686）
   --ubus-json <路径>     从本地文件读取 trafficd JSON 而非调用 ubus（本地测试用）
+  --aliases <路径>       设备别名配置（MAC=名称，默认 /data/other_vol/koakuma/aliases.conf）
   -h, --help             显示本帮助
 
 环境变量：
   KOAKUMA_INTERVAL / KOAKUMA_DB / KOAKUMA_LISTEN
   KOAKUMA_A_RETAIN_DAYS / KOAKUMA_B_RETAIN_DAYS / KOAKUMA_C_RETAIN_DAYS
-  KOAKUMA_UBUS_JSON_FILE";
+  KOAKUMA_UBUS_JSON_FILE / KOAKUMA_ALIASES";

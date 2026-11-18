@@ -1,6 +1,7 @@
 //! koakuma 入口：初始化数据库、启动 Web 服务、采集主循环与信号处理。
 
 mod aggregator;
+mod aliases;
 mod collector;
 mod config;
 mod db;
@@ -50,15 +51,18 @@ fn main() {
         std::process::exit(1);
     }
 
+    // 设备别名（友好名称）配置，支持热加载
+    let mut aliases = aliases::Aliases::new(&cfg.aliases_path);
+
     log(&format!(
-        "koakuma 启动：db={} 采样周期={}s 监听={}",
-        cfg.db_path, cfg.sample_interval_secs, cfg.listen_addr
+        "koakuma 启动：db={} 采样周期={}s 监听={} 别名={}",
+        cfg.db_path, cfg.sample_interval_secs, cfg.listen_addr, cfg.aliases_path
     ));
 
     // --once：采样一次、落库、清理后退出（便于部署后快速自检）
     if cfg.once {
         let mut agg = aggregator::Aggregator::new(now_secs());
-        match run_sample(&conn, &cfg, &mut agg) {
+        match run_sample(&conn, &cfg, &mut agg, &mut aliases) {
             Ok(n) => log(&format!("单次采样完成，写入 {} 台活跃设备", n)),
             Err(e) => {
                 eprintln!("单次采样失败：{}", e);
@@ -90,7 +94,7 @@ fn main() {
 
     while !STOP.load(Ordering::SeqCst) {
         let ts = now_secs();
-        match run_sample(&conn, &cfg, &mut agg) {
+        match run_sample(&conn, &cfg, &mut agg, &mut aliases) {
             Ok(_n) => {}
             Err(e) => log(&format!("采样失败：{}", e)),
         }
@@ -119,9 +123,16 @@ fn main() {
 }
 
 /// 采样一次：读 trafficd → 更新设备字典 → 写 A 表 → 滚动聚合。返回写入的活跃设备数。
-fn run_sample(conn: &rusqlite::Connection, cfg: &config::Config, agg: &mut aggregator::Aggregator) -> Result<usize, String> {
+fn run_sample(conn: &rusqlite::Connection, cfg: &config::Config, agg: &mut aggregator::Aggregator, aliases: &mut aliases::Aliases) -> Result<usize, String> {
+    aliases.refresh();
     let ts = now_secs();
-    let samples = collector::collect(&cfg.ubus_json_file)?;
+    let mut samples = collector::collect(&cfg.ubus_json_file)?;
+    // 应用别名覆盖：优先使用友好名称
+    for s in samples.iter_mut() {
+        if let Some(name) = aliases.resolve(&s.mac) {
+            s.name = name.to_string();
+        }
+    }
     let mut n = 0usize;
     for s in &samples {
         let dev_id = db::upsert_device(conn, &s.mac, &s.ip, &s.name, ts)
