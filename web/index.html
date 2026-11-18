@@ -3,52 +3,94 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f5fa">
   <title>koakuma 流量监控</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    /* 首屏前恢复主题，避免闪烁；localStorage 不可用时跟随系统。 */
+    (function () {
+      try {
+        var saved = localStorage.getItem('koakuma-theme');
+        var dark = saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      } catch (e) {
+        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="page">
     <header class="header">
-      <h1>koakuma 流量监控</h1>
-      <p class="subtitle">OpenWrt 路由器分设备流量实时监控</p>
+      <div class="brand">
+        <div class="brand-mark squircle" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 15.5 9 11l3 3 6.5-7M18.5 7H13m5.5 0v5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <p class="eyebrow">网络监测台</p>
+          <h1>koakuma <span>流量监控</span></h1>
+          <p class="subtitle">OpenWrt 路由器分设备流量实时监控</p>
+        </div>
+      </div>
+      <button id="theme-toggle" class="theme-toggle squircle" type="button" aria-label="切换到深色模式" title="切换到深色模式">
+        <svg class="theme-icon icon-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-14.2-1.4 1.4M6.3 17.7l-1.4 1.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg class="theme-icon icon-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.3 15.1A8.7 8.7 0 0 1 8.9 3.7a8.7 8.7 0 1 0 11.4 11.4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <span id="theme-label">深色</span>
+      </button>
     </header>
 
-    <section class="card controls">
-      <div class="device-picker">
-        <div class="device-picker-head">
-          <span class="field-label">选择设备</span>
-          <span class="selected-count" id="selected-count">已选 0 台</span>
-          <span class="device-picker-actions">
-            <button id="select-all-btn" type="button" class="btn btn-mini btn-secondary">全选</button>
-            <button id="clear-all-btn" type="button" class="btn btn-mini btn-secondary">清空</button>
-          </span>
+    <main>
+      <section class="card controls" aria-labelledby="devices-heading">
+        <div class="device-picker">
+          <div class="device-picker-head">
+            <div class="section-heading">
+              <span class="step-label">设备</span>
+              <h2 id="devices-heading">选择监测对象</h2>
+            </div>
+            <span class="selected-count" id="selected-count">已选 0 台</span>
+            <span class="device-picker-actions">
+              <button id="select-all-btn" type="button" class="btn btn-mini btn-secondary">全选</button>
+              <button id="clear-all-btn" type="button" class="btn btn-mini btn-secondary">清空</button>
+            </span>
+          </div>
+          <div class="device-chips" id="device-chips" role="group" aria-label="设备多选"></div>
         </div>
-        <div class="device-chips" id="device-chips" role="group" aria-label="设备多选"></div>
-      </div>
-      <div class="status" id="status" role="status" aria-live="polite"></div>
-    </section>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
+      </section>
 
-    <section class="cards">
-      <div class="card metric">
-        <div class="metric-head">
-          <span class="metric-title" id="rx-title">下载速率</span>
-          <span class="metric-tag rx">RX</span>
+      <section class="cards" aria-label="实时流量">
+        <div class="card metric metric-rx">
+          <div class="metric-head">
+            <span class="metric-title" id="rx-title">下载速率</span>
+            <span class="metric-tag rx">RX</span>
+          </div>
+          <div class="metric-value" id="rx-value">—</div>
+          <p class="metric-caption">接收流量 · 每 5 秒更新</p>
         </div>
-        <div class="metric-value" id="rx-value">—</div>
-      </div>
-      <div class="card metric">
-        <div class="metric-head">
-          <span class="metric-title" id="tx-title">上传速率</span>
-          <span class="metric-tag tx">TX</span>
+        <div class="card metric metric-tx">
+          <div class="metric-head">
+            <span class="metric-title" id="tx-title">上传速率</span>
+            <span class="metric-tag tx">TX</span>
+          </div>
+          <div class="metric-value" id="tx-value">—</div>
+          <p class="metric-caption">发送流量 · 每 5 秒更新</p>
         </div>
-        <div class="metric-value" id="tx-value">—</div>
-      </div>
-    </section>
+      </section>
 
-    <section class="card history">
-      <div class="history-head">
-        <h2>历史流量曲线</h2>
-        <div class="history-tools">
+      <section class="card history" aria-labelledby="history-heading">
+        <div class="history-head">
+          <div class="section-heading">
+            <span class="step-label">历史</span>
+            <h2 id="history-heading">历史流量曲线</h2>
+            <p class="section-description">对比设备在不同时间段的流量变化</p>
+          </div>
+          <div class="history-actions">
+            <button id="refresh-btn" type="button" class="btn btn-secondary">刷新</button>
+            <button id="reset-btn" type="button" class="btn btn-secondary">重置</button>
+          </div>
+        </div>
+        <div class="history-tools" role="group" aria-label="历史曲线工具栏">
           <label class="field">
             <span class="field-label">显示方式</span>
             <select id="mode-select" class="select select-narrow">
@@ -64,27 +106,26 @@
               <option value="tx">上传</option>
             </select>
           </label>
-          <label class="field">
+          <label class="field range-field">
             <span class="field-label">时间范围</span>
             <select id="range-select" class="select"></select>
           </label>
           <span class="tools-sep">或自定义时间段</span>
           <label class="field">
             <span class="field-label">从</span>
-            <input id="from-input" type="datetime-local" class="datetime">
+            <input id="from-input" type="datetime-local" class="datetime" aria-label="自定义开始时间">
           </label>
           <label class="field">
             <span class="field-label">至</span>
-            <input id="to-input" type="datetime-local" class="datetime">
+            <input id="to-input" type="datetime-local" class="datetime" aria-label="自定义结束时间">
           </label>
           <button id="apply-btn" type="button" class="btn">查看</button>
-          <button id="refresh-btn" type="button" class="btn btn-secondary">刷新</button>
-          <button id="reset-btn" type="button" class="btn btn-secondary">重置</button>
         </div>
-      </div>
-      <div class="charts-container" id="charts-container"></div>
-      <p class="hint" id="chart-hint"></p>
-    </section>
+        <div class="charts-container" id="charts-container"></div>
+        <p class="hint" id="chart-hint"></p>
+      </section>
+    </main>
+    <footer class="footer">本地采集 · 离线可用 · 数据保留于路由器</footer>
   </div>
 
   <script src="vendor/chart.umd.min.js"></script>
