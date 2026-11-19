@@ -94,11 +94,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .page { width: 100%; max-width: 1240px; margin: 0 auto; padding: 38px 32px 30px; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
 .brand { display: flex; align-items: center; gap: 15px; min-width: 0; }
-.brand-mark {
-  width: 52px; height: 52px; flex: 0 0 auto; display: grid; place-items: center;
-  color: var(--on-primary); padding: 12px;
-}
-.brand-mark svg { width: 100%; height: 100%; }
+.brand-mark { width: 52px; height: 52px; flex: 0 0 auto; display: block; }
 .eyebrow { margin: 0 0 2px; color: var(--primary); font-size: var(--fs-caption); font-weight: 700; letter-spacing: .15em; }
 h1 { margin: 0; font-size: var(--fs-title); line-height: 1.3; font-weight: 750; letter-spacing: -.02em; }
 h1 span { font-weight: 500; }
@@ -236,6 +232,8 @@ h2 { margin: 0; font-size: var(--fs-control); line-height: 1.4; font-weight: 700
 .chart-box { position: relative; width: 100%; height: 320px; }
 .hint { margin: 12px 2px 0; color: var(--muted); font-size: var(--fs-secondary); min-height: 1.55em; overflow-wrap: anywhere; }
 .footer { margin-top: 22px; text-align: center; color: var(--muted); font-size: var(--fs-caption); }
+.footer-item b { color: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.footer-sep { margin: 0 8px; color: var(--border-strong); }
 .header-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .logout-btn { white-space: nowrap; }
 .login-overlay {
@@ -249,7 +247,7 @@ h2 { margin: 0; font-size: var(--fs-control); line-height: 1.4; font-weight: 700
   background: var(--surface); color: var(--text); box-shadow: 0 24px 70px rgba(0, 0, 0, .24);
   animation: login-enter 420ms var(--spring) both;
 }
-.login-brand { width: 48px; height: 48px; padding: 11px; margin-bottom: 20px; }
+.login-brand { width: 48px; height: 48px; margin-bottom: 20px; }
 .login-dialog .eyebrow { margin-bottom: 5px; }
 .login-dialog h2 { font-size: var(--fs-title); }
 .login-description { margin: 8px 0 24px; color: var(--text-secondary); font-size: var(--fs-body); }
@@ -272,7 +270,7 @@ body.auth-pending { overflow: hidden; }
   .logout-btn { padding: 7px 10px; font-size: var(--fs-caption); }
   .login-overlay { padding: 16px; }
   .login-dialog { max-height: calc(100dvh - 32px); padding: 26px 22px; }
-  .login-brand { width: 44px; height: 44px; padding: 10px; margin-bottom: 17px; }
+  .login-brand { width: 44px; height: 44px; margin-bottom: 17px; }
 }
 .theme-enter body, .theme-enter .card, .theme-enter .device-chips, .theme-enter .history-tools, .theme-enter .chart-card {
   transition: background-color 420ms var(--spring), color 420ms var(--spring), border-color 420ms var(--spring);

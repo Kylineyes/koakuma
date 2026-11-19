@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="小恶魔">
+  <defs>
+    <mask id="m">
+      <rect width="64" height="64" fill="#fff"/>
+      <g fill="none" stroke="#000" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 37 L23 13 L32 25 L41 13 L51 37"/>
+        <path d="M12 47 L23 21 L32 33 L41 21 L52 47"/>
+      </g>
+      <g fill="#000">
+        <polygon points="54.5,53.0 48.6,48.4 55.4,45.6"/>
+        <polygon points="9.5,53.0 8.6,45.6 15.4,48.4"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#AD3A32" mask="url(#m)"/>
+</svg>

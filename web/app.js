@@ -157,6 +157,8 @@ var statusEl = document.getElementById('status');
 var chartsContainer = document.getElementById('charts-container');
 var themeToggle = document.getElementById('theme-toggle');
 var themeLabel = document.getElementById('theme-label');
+var footerDbEl = document.getElementById('footer-db');
+var footerVersionEl = document.getElementById('footer-version');
 var loginOverlay = document.getElementById('login-overlay');
 var loginForm = document.getElementById('login-form');
 var loginUsername = document.getElementById('login-username');
@@ -873,6 +875,29 @@ function manualRefresh() {
   refreshSeries();
 }
 
+function formatBytes(n) {
+  var v = Number(n);
+  if (!isFinite(v) || v < 0) { return '—'; }
+  var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var i = 0;
+  while (v >= 1024 && i < units.length - 1) { v = v / 1024; i += 1; }
+  return (i === 0 ? String(Math.round(v)) : v.toFixed(1)) + ' ' + units[i];
+}
+
+// 读取工程版本与数据库占用（/api/status，公开接口），填充页脚。
+async function loadStatus() {
+  try {
+    var res = await fetch('/api/status', { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) { throw new Error('HTTP ' + res.status); }
+    var d = await res.json();
+    if (footerDbEl) { footerDbEl.textContent = formatBytes(Number(d.dbBytes)); }
+    if (footerVersionEl) { footerVersionEl.textContent = d.version ? ('v' + String(d.version)) : '—'; }
+  } catch (e) {
+    if (footerDbEl) { footerDbEl.textContent = '—'; }
+    if (footerVersionEl) { footerVersionEl.textContent = '—'; }
+  }
+}
+
 async function initDashboard() {
   if (dashboardReady) { return; }
   initRangeSelect();
@@ -989,6 +1014,7 @@ async function logout() {
 
 async function init() {
   initTheme();
+  loadStatus();
   if (loginForm) { loginForm.addEventListener('submit', submitLogin); }
   bindPressSpring(loginSubmit);
   bindPressSpring(logoutBtn);
