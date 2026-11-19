@@ -25,12 +25,13 @@ pub fn open(path: &str) -> Result<Connection> {
 pub fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS devices (
-            id         INTEGER PRIMARY KEY,
-            mac        TEXT UNIQUE NOT NULL,
-            ip         TEXT,
-            name       TEXT,
-            first_seen INTEGER NOT NULL,
-            last_seen  INTEGER NOT NULL
+            id          INTEGER PRIMARY KEY,
+            mac         TEXT UNIQUE NOT NULL,
+            ip          TEXT,
+            name        TEXT,
+            name_custom INTEGER NOT NULL DEFAULT 0,
+            first_seen  INTEGER NOT NULL,
+            last_seen   INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS a_raw (
             dev_id  INTEGER NOT NULL,
@@ -58,22 +59,39 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             PRIMARY KEY (dev_id, ts)
         ) WITHOUT ROWID;",
     )?;
+    // 迁移旧库：补充 name_custom 列（已存在则忽略错误）
+    let _ = conn.execute(
+        "ALTER TABLE devices ADD COLUMN name_custom INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     Ok(())
 }
 
 /// 设备字典 upsert：按 MAC 去重，更新 ip/last_seen，空主机名不覆盖旧值，返回 dev_id。
 pub fn upsert_device(conn: &Connection, mac: &str, ip: &str, name: &str, now: i64) -> Result<i64> {
     conn.execute(
-        "INSERT INTO devices (mac, ip, name, first_seen, last_seen)
-         VALUES (?1, ?2, ?3, ?4, ?4)
+        "INSERT INTO devices (mac, ip, name, first_seen, last_seen, name_custom)
+         VALUES (?1, ?2, ?3, ?4, ?4, 0)
          ON CONFLICT(mac) DO UPDATE SET
             ip = excluded.ip,
-            name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE devices.name END,
+            name = CASE WHEN devices.name_custom = 0 AND excluded.name <> '' THEN excluded.name ELSE devices.name END,
             last_seen = excluded.last_seen",
         params![mac, ip, name, now],
     )?;
     let id: i64 = conn.query_row("SELECT id FROM devices WHERE mac = ?1", params![mac], |r| r.get(0))?;
     Ok(id)
+}
+
+/// 修改设备显示名（写入数据库并标记为自定义名称，避免被后续采样覆盖）。
+/// 传入空白名称表示取消自定义、恢复自动名称。
+pub fn rename_device(conn: &Connection, id: i64, name: &str) -> Result<bool> {
+    let trimmed = name.trim();
+    let custom = if trimmed.is_empty() { 0 } else { 1 };
+    let affected = conn.execute(
+        "UPDATE devices SET name = ?1, name_custom = ?2 WHERE id = ?3",
+        params![trimmed, custom, id],
+    )?;
+    Ok(affected > 0)
 }
 
 /// 写入一条 A 表原始采样。
