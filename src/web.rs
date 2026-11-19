@@ -26,6 +26,7 @@ const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
 const STYLE_CSS: &str = include_str!("../web/style.css");
 const CHART_JS: &str = include_str!("../web/vendor/chart.umd.min.js");
+const BRAND_SVG: &str = include_str!("../web/brand.svg");
 
 const SESSION_COOKIE: &str = "koakuma_session";
 
@@ -170,6 +171,9 @@ fn handle(
         "/api/logout" => {
             return api_logout(cookie, sessions);
         }
+        "/api/status" => {
+            return api_status(db_path);
+        }
         _ => {}
     }
 
@@ -185,6 +189,7 @@ fn handle(
         "/vendor/chart.umd.min.js" => {
             respond_body("application/javascript; charset=utf-8", 200, CHART_JS)
         }
+        "/brand.svg" | "/favicon.svg" => respond_body("image/svg+xml", 200, BRAND_SVG),
         "/favicon.ico" => respond_body("text/plain; charset=utf-8", 204, ""),
         "/api/devices" => api_devices(db_path, client_ip),
         "/api/latest" => api_latest(db_path),
@@ -269,6 +274,21 @@ fn api_logout(cookie: Option<&str>, sessions: &Sessions) -> Resp {
     );
     let h = Header::from_bytes(&b"Set-Cookie"[..], expired.as_bytes()).unwrap();
     json_resp_headers(200, &json!({ "ok": true }), vec![h])
+}
+
+fn file_size(path: &str) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+/// 返回工程版本（编译期 CARGO_PKG_VERSION）与数据库占用字节数（含 -wal/-shm）。
+fn api_status(db_path: &str) -> Resp {
+    let mut total = file_size(db_path);
+    total += file_size(&format!("{}-wal", db_path));
+    total += file_size(&format!("{}-shm", db_path));
+    json_resp(
+        200,
+        &json!({ "version": env!("CARGO_PKG_VERSION"), "dbBytes": total }),
+    )
 }
 
 fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {

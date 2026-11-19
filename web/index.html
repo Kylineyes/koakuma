@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f5fa">
-  <title>koakuma 流量监控</title>
+  <title>小恶魔 流量监控</title>
+  <link rel="icon" type="image/svg+xml" href="/brand.svg">
   <link rel="stylesheet" href="style.css">
   <script>
     /* 首屏前恢复主题，避免闪烁；localStorage 不可用时跟随系统。 */
@@ -24,12 +25,10 @@
   <div class="page">
     <header class="header">
       <div class="brand">
-        <div class="brand-mark squircle" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M5 15.5 9 11l3 3 6.5-7M18.5 7H13m5.5 0v5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
+        <img class="brand-mark" src="/brand.svg" alt="" aria-hidden="true">
         <div>
           <p class="eyebrow">网络监测台</p>
-          <h1>koakuma <span>流量监控</span></h1>
+          <h1>小恶魔 <span>流量监控</span></h1>
           <p class="subtitle">OpenWrt 路由器分设备流量实时监控</p>
         </div>
       </div>
@@ -128,16 +127,18 @@
         <p class="hint" id="chart-hint"></p>
       </section>
     </main>
-    <footer class="footer">本地采集 · 离线可用 · 数据保留于路由器</footer>
+    <footer class="footer">
+      <span class="footer-item">数据库占用 <b id="footer-db">—</b></span>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <span class="footer-item">版本 <b id="footer-version">—</b></span>
+    </footer>
   </div>
 
   <div id="login-overlay" class="login-overlay" hidden>
     <section class="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title" aria-describedby="login-description">
-      <div class="brand-mark squircle login-brand" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M5 15.5 9 11l3 3 6.5-7M18.5 7H13m5.5 0v5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
+      <img class="brand-mark login-brand" src="/brand.svg" alt="" aria-hidden="true">
       <p class="eyebrow">网络监测台</p>
-      <h2 id="login-title">koakuma 流量监控</h2>
+      <h2 id="login-title">小恶魔 流量监控</h2>
       <p class="login-description" id="login-description">请登录以查看设备与流量数据</p>
       <form id="login-form" class="login-form">
         <label class="login-field" for="login-username">
