@@ -397,7 +397,7 @@ function tdText(cls, text) {
   return td;
 }
 
-// 点击名称单元格进入就地编辑，保存到数据库。
+// 双击名称单元格进入就地编辑，保存到数据库。
 function startEditName(device, td) {
   if (!td || td.querySelector('.name-edit')) { return; }
   var original = device.name || '';
@@ -440,7 +440,6 @@ async function saveDeviceName(id, name) {
     }
     var idx = deviceIndexById(id);
     if (idx >= 0) { devices[idx].name = name; }
-    setStatus('名称已更新：' + (name || '（空）'), false);
     renderChips();
   } catch (err) {
     setStatus('改名失败：' + (err && err.message ? err.message : '未知错误'), true);
@@ -463,9 +462,9 @@ function renderChips() {
     tr.setAttribute('aria-selected', active ? 'true' : 'false');
 
     var nameTd = tdText('col-name col-name-edit', (d.self === true ? '★本机 ' : '') + (d.name ? d.name : '未命名'));
-    nameTd.title = '点击修改名称';
+    nameTd.title = '双击修改名称';
     (function (device, cell) {
-      cell.addEventListener('click', function (e) { e.stopPropagation(); startEditName(device, cell); });
+      cell.addEventListener('dblclick', function (e) { e.stopPropagation(); startEditName(device, cell); });
     })(d, nameTd);
     tr.appendChild(nameTd);
 
@@ -490,8 +489,21 @@ function toggleSelect(id) {
     selectedIds.push(id);
   }
   sortSelected();
-  renderChips();
+  updateRowsSelection();
   onSelectionChanged();
+}
+
+// 仅更新各行的选中状态（不重建 DOM，保证双击改名的节点稳定）。
+function updateRowsSelection() {
+  if (!deviceTbodyEl) { return; }
+  var rows = deviceTbodyEl.querySelectorAll('tr');
+  for (var i = 0; i < rows.length; i++) {
+    var id = rows[i].getAttribute('data-dev-id');
+    var on = selectedIds.indexOf(id) >= 0;
+    if (on) { rows[i].classList.add('active'); } else { rows[i].classList.remove('active'); }
+    rows[i].setAttribute('aria-selected', on ? 'true' : 'false');
+  }
+  updateSelectedCount();
 }
 
 function selectAllDevices() {
