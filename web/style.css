@@ -33,7 +33,6 @@
   --chart-grid: rgba(78, 92, 115, 0.16);
   --focus: #7d91ef;
   --shadow: 0 1px 2px rgba(25, 34, 53, 0.03), 0 12px 32px rgba(25, 34, 53, 0.04);
-  --squircle: polygon(5% 0, 10% .12%, 20% .65%, 30% 1.6%, 40% 2.75%, 50% 3%, 60% 2.75%, 70% 1.6%, 80% .65%, 90% .12%, 95% 0, 97.5% .5%, 99.35% 2.2%, 99.88% 5%, 100% 10%, 100% 90%, 99.88% 95%, 99.35% 97.8%, 97.5% 99.5%, 95% 100%, 90% 99.88%, 80% 99.35%, 70% 98.4%, 60% 97.25%, 50% 97%, 40% 97.25%, 30% 98.4%, 20% 99.35%, 10% 99.88%, 5% 100%, 2.5% 99.5%, .65% 97.8%, .12% 95%, 0 90%, 0 10%, .12% 5%, .65% 2.2%, 2.5% .5%);
   --spring: linear(
     0, .0093, .037, .0824, .1425, .2136, .2922, .3746,
     .4576, .5377, .6123, .6795, .7382, .7881, .8297, .8635,
@@ -115,11 +114,15 @@ h1 span { font-weight: 500; }
 main { display: grid; gap: 18px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
 .squircle {
-  /* 连续曲率近似多边形；不支持时保留普通圆角。 */
-  border-radius: 28%;
-  clip-path: var(--squircle);
+  /* 圆角只裁剪背景；图标、文字与焦点轮廓始终不参与裁剪。 */
+  border-radius: 30%;
+  clip-path: none;
 }
-@supports not (clip-path: polygon(0 0)) { .squircle { clip-path: none; } }
+.brand-mark.squircle { border-radius: 16px; }
+.theme-toggle.squircle { border-radius: 14px; }
+@media (max-width: 600px) {
+  .brand-mark.squircle, .theme-toggle.squircle { border-radius: 13px; }
+}
 .section-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 h2 { margin: 0; font-size: var(--fs-control); line-height: 1.4; font-weight: 700; }
 .step-label { color: var(--primary); font-size: var(--fs-caption); font-weight: 700; letter-spacing: .06em; }
