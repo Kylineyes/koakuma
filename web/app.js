@@ -135,7 +135,7 @@ function colorForIndex(i) {
   return PALETTE[((i % n) + n) % n];
 }
 
-var deviceChipsEl = document.getElementById('device-chips');
+var deviceTbodyEl = document.getElementById('device-tbody');
 var selectedCountEl = document.getElementById('selected-count');
 var selectAllBtn = document.getElementById('select-all-btn');
 var clearAllBtn = document.getElementById('clear-all-btn');
@@ -325,46 +325,159 @@ function updateSelectedCount() {
   if (selectedCountEl) { selectedCountEl.textContent = '已选 ' + n + ' 台'; }
 }
 
-// 渲染设备芯片/复选项：可点击切换，支持多选。
+// 设备表格排序状态：sortKey 为 null 表示“复原”（接口原始顺序）。
+var sortKey = null;
+var sortDir = 'asc';
+
+// Unix 秒格式化为精确到秒的本地时间。
+function formatTs(sec) {
+  var n = Number(sec);
+  if (!isFinite(n) || n <= 0) { return '—'; }
+  return formatDateTime(n * 1000);
+}
+
+// 按当前排序状态返回要显示的设备列表（不改动 devices 原顺序）。
+function deviceDisplayList() {
+  var arr = devices.slice();
+  if (!sortKey) { return arr; }
+  var key = sortKey;
+  var dir = sortDir === 'asc' ? 1 : -1;
+  arr.sort(function (a, b) {
+    var va, vb;
+    if (key === 'first_seen' || key === 'last_seen') {
+      va = Number(a[key]) || 0; vb = Number(b[key]) || 0;
+      return (va - vb) * dir;
+    }
+    va = String(a[key] == null ? '' : a[key]).toLowerCase();
+    vb = String(b[key] == null ? '' : b[key]).toLowerCase();
+    if (va < vb) { return -1 * dir; }
+    if (va > vb) { return 1 * dir; }
+    return 0;
+  });
+  return arr;
+}
+
+function updateSortIndicators() {
+  var ths = document.querySelectorAll('#device-table th[data-sort]');
+  for (var i = 0; i < ths.length; i++) {
+    var th = ths[i];
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (sortKey && th.getAttribute('data-sort') === sortKey) {
+      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  }
+}
+
+// 点击表头：正序 → 倒序 → 复原（原始顺序）循环。
+function cycleSort(key) {
+  if (sortKey !== key) { sortKey = key; sortDir = 'asc'; }
+  else if (sortDir === 'asc') { sortDir = 'desc'; }
+  else { sortKey = null; sortDir = 'asc'; }
+  updateSortIndicators();
+  renderChips();
+}
+
+function initDeviceTableSorting() {
+  var ths = document.querySelectorAll('#device-table th[data-sort]');
+  for (var i = 0; i < ths.length; i++) {
+    (function (th) {
+      th.addEventListener('click', function () { cycleSort(th.getAttribute('data-sort')); });
+    })(ths[i]);
+  }
+  updateSortIndicators();
+}
+
+function tdText(cls, text) {
+  var td = document.createElement('td');
+  td.className = cls;
+  var span = document.createElement('span');
+  span.className = 'cell-text';
+  span.textContent = text;
+  td.appendChild(span);
+  return td;
+}
+
+// 点击名称单元格进入就地编辑，保存到数据库。
+function startEditName(device, td) {
+  if (!td || td.querySelector('.name-edit')) { return; }
+  var original = device.name || '';
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'name-edit';
+  input.value = original;
+  input.maxLength = 64;
+  input.addEventListener('click', function (e) { e.stopPropagation(); });
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+  var done = false;
+  function finish(save) {
+    if (done) { return; }
+    done = true;
+    var val = input.value.trim();
+    if (save && val !== original) { saveDeviceName(device.id, val); }
+    else { renderChips(); }
+  }
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', function () { finish(true); });
+}
+
+async function saveDeviceName(id, name) {
+  try {
+    var res = await fetch('/api/device/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ id: Number(id), name: name })
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok || !data || data.ok !== true) {
+      throw new Error(data && data.error ? data.error : '保存失败');
+    }
+    var idx = deviceIndexById(id);
+    if (idx >= 0) { devices[idx].name = name; }
+    setStatus('名称已更新：' + (name || '（空）'), false);
+    renderChips();
+  } catch (err) {
+    setStatus('改名失败：' + (err && err.message ? err.message : '未知错误'), true);
+    renderChips();
+  }
+}
+
+// 渲染设备表格：整行点击切换选中（多选），名称列点击就地改名。
 function renderChips() {
-  if (!deviceChipsEl) { return; }
-  deviceChipsEl.innerHTML = '';
-  for (var i = 0; i < devices.length; i++) {
-    var d = devices[i] || {};
+  if (!deviceTbodyEl) { return; }
+  deviceTbodyEl.innerHTML = '';
+  var list = deviceDisplayList();
+  for (var i = 0; i < list.length; i++) {
+    var d = list[i] || {};
     var id = String(d.id);
-    var chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'device-chip' + (selectedIds.indexOf(id) >= 0 ? ' active' : '');
-    chip.setAttribute('data-dev-id', id);
-    chip.setAttribute('aria-pressed', selectedIds.indexOf(id) >= 0 ? 'true' : 'false');
-    chip.setAttribute('aria-label', (d.self === true ? '本机，' : '') + deviceName(d) + '，' + (d.ip || '未知 IP'));
-    bindPressSpring(chip);
+    var active = selectedIds.indexOf(id) >= 0;
+    var tr = document.createElement('tr');
+    tr.className = 'device-row' + (active ? ' active' : '');
+    tr.setAttribute('data-dev-id', id);
+    tr.setAttribute('aria-selected', active ? 'true' : 'false');
 
-    var dot = document.createElement('span');
-    dot.className = 'chip-dot';
-    dot.style.background = colorForIndex(i);
-    chip.appendChild(dot);
+    var nameTd = tdText('col-name col-name-edit', (d.self === true ? '★本机 ' : '') + (d.name ? d.name : '未命名'));
+    nameTd.title = '点击修改名称';
+    (function (device, cell) {
+      cell.addEventListener('click', function (e) { e.stopPropagation(); startEditName(device, cell); });
+    })(d, nameTd);
+    tr.appendChild(nameTd);
 
-    var label = document.createElement('span');
-    label.className = 'chip-label';
-    var name = d.name ? d.name : '未命名';
-    var ip = d.ip ? d.ip : '未知 IP';
-    var mac = d.mac ? d.mac : '未知 MAC';
-    // 显示格式：★本机 name（ip）[mac]
-    label.textContent = (d.self === true ? '★本机 ' : '') + name + '（' + ip + '）[' + mac + ']';
-    chip.appendChild(label);
-
-    var check = document.createElement('span');
-    check.className = 'chip-check';
-    check.setAttribute('aria-hidden', 'true');
-    check.textContent = '✓';
-    chip.appendChild(check);
+    tr.appendChild(tdText('col-ip', d.ip ? d.ip : '—'));
+    tr.appendChild(tdText('col-mac', d.mac ? d.mac : '—'));
+    tr.appendChild(tdText('col-time', formatTs(d.first_seen)));
+    tr.appendChild(tdText('col-time', formatTs(d.last_seen)));
 
     (function (devId) {
-      chip.addEventListener('click', function () { toggleSelect(devId); });
+      tr.addEventListener('click', function () { toggleSelect(devId); });
     })(id);
-
-    deviceChipsEl.appendChild(chip);
+    deviceTbodyEl.appendChild(tr);
   }
   updateSelectedCount();
 }
@@ -900,6 +1013,7 @@ async function loadStatus() {
 
 async function initDashboard() {
   if (dashboardReady) { return; }
+  initDeviceTableSorting();
   initRangeSelect();
   if (modeSelect) { modeSelect.value = 'separate'; }
   if (metricSelect) { metricSelect.value = 'both'; }

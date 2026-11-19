@@ -57,7 +57,20 @@
               <button id="clear-all-btn" type="button" class="btn btn-mini btn-secondary">清空</button>
             </span>
           </div>
-          <div class="device-chips" id="device-chips" role="group" aria-label="设备多选"></div>
+          <div class="device-table-wrap">
+            <table class="device-table" id="device-table" aria-label="设备列表">
+              <thead>
+                <tr>
+                  <th data-sort="name">名称</th>
+                  <th data-sort="ip">IP 地址</th>
+                  <th data-sort="mac">MAC 地址</th>
+                  <th data-sort="first_seen">最早加入时间</th>
+                  <th data-sort="last_seen">最近活跃时间</th>
+                </tr>
+              </thead>
+              <tbody id="device-tbody"></tbody>
+            </table>
+          </div>
         </div>
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </section>

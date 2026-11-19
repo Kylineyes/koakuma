@@ -321,3 +321,36 @@ body.auth-pending { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* ===== 设备表格 ===== */
+.device-table-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: auto; background: var(--surface-inset); }
+.device-table { width: 100%; border-collapse: collapse; font-size: var(--fs-secondary); }
+.device-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-raised); color: var(--text-secondary);
+  font-weight: 600; text-align: left; padding: 9px 12px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+  cursor: pointer; user-select: none;
+}
+.device-table thead th:hover { color: var(--primary); }
+.device-table th.sort-asc::after { content: " ▲"; font-size: 10px; }
+.device-table th.sort-desc::after { content: " ▼"; font-size: 10px; }
+.device-table tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+.device-table tbody tr:last-child td { border-bottom: 0; }
+.device-table tbody tr { cursor: pointer; }
+.device-table tbody tr:hover { background: var(--surface-raised); }
+.device-table tbody tr.active { background: var(--primary-soft); }
+.device-table tbody tr.active .col-name { color: var(--primary); }
+.device-table .col-name { font-weight: 600; }
+.device-table .col-name-edit .cell-text { border-bottom: 1px dashed transparent; }
+.device-table .col-name-edit:hover .cell-text { border-bottom-color: var(--primary); color: var(--primary); }
+.device-table .col-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.device-table .name-edit {
+  width: 100%; box-sizing: border-box; font: inherit; padding: 3px 6px;
+  border: 1px solid var(--primary); border-radius: 6px;
+  background: var(--surface); color: var(--text);
+}
+@media (max-width: 600px) {
+  .device-table { font-size: var(--fs-caption); }
+  .device-table thead th, .device-table tbody td { padding: 7px 8px; }
+}

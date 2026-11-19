@@ -192,6 +192,7 @@ fn handle(
         "/api/devices" => api_devices(db_path, client_ip),
         "/api/latest" => api_latest(db_path),
         "/api/series" => api_series(db_path, url),
+        "/api/device/rename" => api_rename(method, body, db_path),
         _ => respond_body("text/plain; charset=utf-8", 404, "未找到页面"),
     }
 }
@@ -286,6 +287,27 @@ fn api_status(db_path: &str) -> Resp {
     json_resp(200, &json!({ "version": env!("CARGO_PKG_VERSION"), "dbBytes": total }))
 }
 
+fn api_rename(method: &str, body: &str, db_path: &str) -> Resp {
+    if method != "POST" {
+        return json_resp(405, &json!({ "ok": false, "error": "方法不允许" }));
+    }
+    let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    let id = match v.get("id").and_then(|x| x.as_i64()) {
+        Some(x) => x,
+        None => return json_resp(400, &json!({ "ok": false, "error": "缺少或非法的 id" })),
+    };
+    let name = v.get("name").and_then(|x| x.as_str()).unwrap_or("");
+    let conn = match db::open(db_path) {
+        Ok(c) => c,
+        Err(e) => return json_resp(500, &json!({ "ok": false, "error": format!("打开数据库失败：{}", e) })),
+    };
+    match db::rename_device(&conn, id, name) {
+        Ok(true) => json_resp(200, &json!({ "ok": true })),
+        Ok(false) => json_resp(404, &json!({ "ok": false, "error": "设备不存在" })),
+        Err(e) => json_resp(500, &json!({ "ok": false, "error": format!("更新失败：{}", e) })),
+    }
+}
+
 fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {
     let conn = match db::open(db_path) {
         Ok(c) => c,
@@ -293,7 +315,7 @@ fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {
     };
     let res = (|| -> rusqlite::Result<Vec<Value>> {
         let mut stmt = conn.prepare(
-            "SELECT id, mac, COALESCE(ip,''), COALESCE(name,''), last_seen
+            "SELECT id, mac, COALESCE(ip,''), COALESCE(name,''), first_seen, last_seen
              FROM devices
              ORDER BY (name IS NULL OR name = ''), name COLLATE NOCASE, id",
         )?;
@@ -308,7 +330,8 @@ fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {
                 "mac": r.get::<_, String>(1)?,
                 "ip": ip,
                 "name": r.get::<_, String>(3)?,
-                "last_seen": r.get::<_, i64>(4)?,
+                "first_seen": r.get::<_, i64>(4)?,
+                "last_seen": r.get::<_, i64>(5)?,
                 "self": is_self,
             }))
         })?;
