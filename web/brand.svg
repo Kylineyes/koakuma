@@ -3,12 +3,14 @@
     <mask id="m">
       <rect width="64" height="64" fill="#fff"/>
       <g fill="none" stroke="#000" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M13 37 L23 13 L32 25 L41 13 L51 37"/>
-        <path d="M12 47 L23 21 L32 33 L41 21 L52 47"/>
+        <!-- 左箭头（独立的折线，向上到峰再落到左脚，箭头在左脚指向左下） -->
+        <path d="M30 42 L20 16 L11 42"/>
+        <!-- 右箭头（独立的折线，向上到峰再落到右脚，箭头在右脚指向右下） -->
+        <path d="M34 42 L44 16 L53 42"/>
       </g>
       <g fill="#000">
-        <polygon points="54.5,53.0 48.6,48.4 55.4,45.6"/>
-        <polygon points="9.5,53.0 8.6,45.6 15.4,48.4"/>
+        <polygon points="9.1,48.4 7.3,40.9 14.7,43.0"/>
+        <polygon points="54.9,48.4 49.3,43.0 56.7,40.9"/>
       </g>
     </mask>
   </defs>
