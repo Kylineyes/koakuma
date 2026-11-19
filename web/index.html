@@ -33,11 +33,14 @@
           <p class="subtitle">OpenWrt 路由器分设备流量实时监控</p>
         </div>
       </div>
+      <div class="header-actions">
+      <button id="logout-btn" class="btn btn-secondary logout-btn" type="button" hidden>退出登录</button>
       <button id="theme-toggle" class="theme-toggle squircle" type="button" aria-label="切换到深色模式" title="切换到深色模式">
         <svg class="theme-icon icon-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-14.2-1.4 1.4M6.3 17.7l-1.4 1.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <svg class="theme-icon icon-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.3 15.1A8.7 8.7 0 0 1 8.9 3.7a8.7 8.7 0 1 0 11.4 11.4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         <span id="theme-label">深色</span>
       </button>
+      </div>
     </header>
 
     <main>
@@ -126,6 +129,30 @@
       </section>
     </main>
     <footer class="footer">本地采集 · 离线可用 · 数据保留于路由器</footer>
+  </div>
+
+  <div id="login-overlay" class="login-overlay" hidden>
+    <section class="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title" aria-describedby="login-description">
+      <div class="brand-mark squircle login-brand" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M5 15.5 9 11l3 3 6.5-7M18.5 7H13m5.5 0v5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <p class="eyebrow">网络监测台</p>
+      <h2 id="login-title">koakuma 流量监控</h2>
+      <p class="login-description" id="login-description">请登录以查看设备与流量数据</p>
+      <form id="login-form" class="login-form">
+        <label class="login-field" for="login-username">
+          <span>用户名</span>
+          <input id="login-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </label>
+        <label class="login-field" for="login-password">
+          <span>密码</span>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="login-error" class="login-error" role="alert" aria-live="assertive"></p>
+        <button id="login-submit" class="btn login-submit" type="submit">登录</button>
+      </form>
+      <p class="login-note">登录状态仅用于访问本路由器的监控数据</p>
+    </section>
   </div>
 
   <script src="vendor/chart.umd.min.js"></script>

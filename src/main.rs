@@ -55,9 +55,20 @@ fn main() {
     let mut aliases = aliases::Aliases::new(&cfg.aliases_path);
 
     log(&format!(
-        "koakuma 启动：db={} 采样周期={}s 监听={} 别名={}",
-        cfg.db_path, cfg.sample_interval_secs, cfg.listen_addr, cfg.aliases_path
+        "koakuma 启动：db={} 采样周期={}s 监听={} 别名={} 配置={}",
+        cfg.db_path,
+        cfg.sample_interval_secs,
+        cfg.listen_addr,
+        cfg.aliases_path,
+        cfg.config_file.as_deref().unwrap_or("(无)")
     ));
+    if cfg.auth_enabled {
+        if cfg.auth_password.is_empty() {
+            log("警告：已启用登录鉴权但密码为空，请尽快在 config.yaml 的 auth.password 设置强密码");
+        } else {
+            log(&format!("已启用登录鉴权，用户名={}", cfg.auth_username));
+        }
+    }
 
     // --once：采样一次、落库、清理后退出（便于部署后快速自检）
     if cfg.once {
@@ -80,7 +91,13 @@ fn main() {
     }
 
     // 启动内置 Web 服务（独立线程、独立只读连接）
-    web::serve(cfg.db_path.clone(), cfg.listen_addr.clone());
+    web::serve(
+        cfg.db_path.clone(),
+        cfg.listen_addr.clone(),
+        cfg.auth_enabled,
+        cfg.auth_username.clone(),
+        cfg.auth_password.clone(),
+    );
 
     // 安装信号处理（SIGINT / SIGTERM）
     unsafe {

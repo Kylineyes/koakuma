@@ -157,6 +157,15 @@ var statusEl = document.getElementById('status');
 var chartsContainer = document.getElementById('charts-container');
 var themeToggle = document.getElementById('theme-toggle');
 var themeLabel = document.getElementById('theme-label');
+var loginOverlay = document.getElementById('login-overlay');
+var loginForm = document.getElementById('login-form');
+var loginUsername = document.getElementById('login-username');
+var loginPassword = document.getElementById('login-password');
+var loginSubmit = document.getElementById('login-submit');
+var loginError = document.getElementById('login-error');
+var logoutBtn = document.getElementById('logout-btn');
+var dashboardReady = false;
+var loginPending = false;
 
 // 设备列表与选中状态。
 var devices = [];
@@ -864,8 +873,8 @@ function manualRefresh() {
   refreshSeries();
 }
 
-async function init() {
-  initTheme();
+async function initDashboard() {
+  if (dashboardReady) { return; }
   initRangeSelect();
   if (modeSelect) { modeSelect.value = 'separate'; }
   if (metricSelect) { metricSelect.value = 'both'; }
@@ -891,6 +900,7 @@ async function init() {
 
   try {
     await loadDevices();
+    dashboardReady = true;
   } catch (err) {
     setStatus(err && err.message ? err.message : '设备列表加载失败', true);
     return;
@@ -903,6 +913,104 @@ async function init() {
   refreshLatest();
   reloadSeriesForSelection();
   latestTimer = setInterval(refreshLatest, LATEST_INTERVAL);
+}
+
+// 显示登录层后仅保留主题与登录交互，不请求任何仪表盘数据。
+function showLogin() {
+  if (loginOverlay) { loginOverlay.hidden = false; }
+  document.body.classList.add('auth-pending');
+  var page = document.querySelector('.page');
+  if (page) { page.inert = true; }
+  if (loginError) { loginError.textContent = ''; }
+  if (loginUsername) { loginUsername.focus(); }
+}
+
+function hideLogin() {
+  if (loginOverlay) { loginOverlay.hidden = true; }
+  document.body.classList.remove('auth-pending');
+  var page = document.querySelector('.page');
+  if (page) { page.inert = false; }
+}
+
+function setLoginError(text) {
+  if (loginError) { loginError.textContent = text || ''; }
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  if (loginPending) { return; }
+  if (!loginUsername || !loginPassword || !loginSubmit) { return; }
+  var username = loginUsername.value;
+  var password = loginPassword.value;
+  if (!username || !password) {
+    setLoginError('请输入用户名和密码');
+    (username ? loginPassword : loginUsername).focus();
+    return;
+  }
+  loginPending = true;
+  loginSubmit.disabled = true;
+  loginSubmit.textContent = '登录中…';
+  setLoginError('');
+  try {
+    var res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ username: username, password: password })
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) { /* 非 JSON 响应按失败处理 */ }
+    if (!res.ok || !data || data.ok !== true) {
+      throw new Error(data && data.error ? data.error : '用户名或密码错误');
+    }
+    loginPassword.value = '';
+    hideLogin();
+    if (logoutBtn) { logoutBtn.hidden = false; }
+    await initDashboard();
+  } catch (err) {
+    setLoginError(err && err.message ? err.message : '用户名或密码错误');
+    loginPassword.value = '';
+    loginPassword.focus();
+  } finally {
+    loginPending = false;
+    loginSubmit.disabled = false;
+    loginSubmit.textContent = '登录';
+  }
+}
+
+async function logout() {
+  if (!logoutBtn || logoutBtn.disabled) { return; }
+  logoutBtn.disabled = true;
+  try {
+    await fetch('/api/logout', { method: 'POST', headers: { 'Accept': 'application/json' } });
+  } finally {
+    location.reload();
+  }
+}
+
+async function init() {
+  initTheme();
+  if (loginForm) { loginForm.addEventListener('submit', submitLogin); }
+  bindPressSpring(loginSubmit);
+  bindPressSpring(logoutBtn);
+  if (logoutBtn) { logoutBtn.addEventListener('click', logout); }
+  try {
+    var res = await fetch('/api/session', { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) { throw new Error('登录状态检查失败：HTTP ' + res.status); }
+    var session = await res.json();
+    var required = session.authRequired === true;
+    if (logoutBtn) { logoutBtn.hidden = !required || session.authenticated !== true; }
+    if (!required || session.authenticated === true) {
+      hideLogin();
+      await initDashboard();
+    } else {
+      showLogin();
+    }
+  } catch (err) {
+    // 状态不可知时保持阻断，避免产生未授权的数据请求。
+    showLogin();
+    setLoginError(err && err.message ? err.message : '无法检查登录状态，请稍后重试');
+    if (loginSubmit) { loginSubmit.disabled = true; }
+  }
 }
 
 if (document.readyState === 'loading') {

@@ -1,0 +1,28 @@
+# koakuma 配置文件示例
+# 复制为 config.yaml 后按需修改；config.yaml 含密码，已在 .gitignore 中忽略，请勿提交。
+# 优先级：默认值 < config.yaml < 环境变量 < 命令行参数。
+
+server:
+  # 监听地址（IP:端口）；0.0.0.0 表示监听所有网卡
+  listen: "0.0.0.0:8686"
+
+db:
+  # SQLite 数据库文件路径（放在可写分区）
+  path: "/data/other_vol/koakuma/traffic.db"
+
+auth:
+  # 是否启用网页登录；启用后打开页面需输入下面的用户名/密码
+  enabled: false
+  username: "admin"
+  password: "请改成你的强密码"
+
+sampling:
+  interval: 10
+
+retention:
+  a_days: 3
+  b_days: 35
+  c_days: 180
+
+aliases:
+  path: "/data/other_vol/koakuma/aliases.conf"

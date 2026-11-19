@@ -5,3 +5,5 @@
 /tmp
 .env
 /.e2e
+# 含登录口令，勿提交
+config.yaml
