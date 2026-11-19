@@ -71,9 +71,10 @@
 ## 5. 圆角与连续曲率
 
 - 大卡片：16px；内嵌区域：12px；按钮：8–10px；角标：6–7px。
-- 品牌标记使用 16px、桌面主题按钮使用 14px、移动端两者使用 13px 圆角，以柔和圆角近似连续曲率。
-- .squircle 只设置 border-radius，禁止对承载图标、文字或按钮边框的元素使用 clip-path/mask，避免内容和上下边缘被裁切。
-- 原生 border-radius 在所有浏览器中行为一致，无需额外降级；焦点轮廓保持完整可见。
+- 品牌标记与主题按钮使用 n=5 超椭圆的贝塞尔近似，形成连续曲率；内联 SVG data URI 随盒子缩放，无外部资源。
+- 元素本身透明且 position: relative + isolation: isolate；::before 以 inset: 0 和 z-index: -1 承载背景、主题按钮 1px 边框及 SVG mask，内容位于其上。
+- 仅 ::before 使用 -webkit-mask/mask；承载图标、文字、边框和焦点轮廓的元素不得使用 clip-path/mask。
+- 原生 border-radius 作为遮罩不可用时的降级，布局与功能不受影响；焦点 outline 完整可见。
 - 大卡片保留普通圆角以兼顾阴影、边框与渲染成本；.squircle 只用于小型视觉焦点。
 
 ## 6. 动效规范（弹簧，ζ=1）
