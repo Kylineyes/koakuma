@@ -2,15 +2,17 @@
   <defs>
     <mask id="m">
       <rect width="64" height="64" fill="#fff"/>
-      <g fill="none" stroke="#000" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
-        <!-- 左箭头（独立的折线，向上到峰再落到左脚，箭头在左脚指向左下） -->
-        <path d="M30 42 L20 16 L11 42"/>
-        <!-- 右箭头（独立的折线，向上到峰再落到右脚，箭头在右脚指向右下） -->
-        <path d="M34 42 L44 16 L53 42"/>
+      <g fill="none" stroke="#000" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- 上折线（M 形，宽展）：右端为箭头 -->
+        <path d="M8 32 L22 20 L32 26 L42 20 L56 32"/>
+        <!-- 下折线：由上面同一条折线整体下移 18 得到，保证与上折线处处平行；左端为箭头（方向相反） -->
+        <path d="M8 50 L22 38 L32 44 L42 38 L56 50"/>
       </g>
       <g fill="#000">
-        <polygon points="9.1,48.4 7.3,40.9 14.7,43.0"/>
-        <polygon points="54.9,48.4 49.3,43.0 56.7,40.9"/>
+        <!-- 上折线右端箭头：指向右下 -->
+        <polygon points="61.3,36.6 53.4,35.0 58.6,29.0"/>
+        <!-- 下折线左端箭头：指向左下（方向相反） -->
+        <polygon points="2.7,54.6 10.6,53.0 5.4,47.0"/>
       </g>
     </mask>
   </defs>
