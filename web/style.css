@@ -236,6 +236,8 @@ h2 { margin: 0; font-size: var(--fs-control); line-height: 1.4; font-weight: 700
 .chart-box { position: relative; width: 100%; height: 320px; }
 .hint { margin: 12px 2px 0; color: var(--muted); font-size: var(--fs-secondary); min-height: 1.55em; overflow-wrap: anywhere; }
 .footer { margin-top: 22px; text-align: center; color: var(--muted); font-size: var(--fs-caption); }
+.footer-item b { color: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.footer-sep { margin: 0 8px; color: var(--border-strong); }
 .header-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .logout-btn { white-space: nowrap; }
 .login-overlay {

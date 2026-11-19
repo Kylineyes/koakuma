@@ -170,6 +170,9 @@ fn handle(
         "/api/logout" => {
             return api_logout(cookie, sessions);
         }
+        "/api/status" => {
+            return api_status(db_path);
+        }
         _ => {}
     }
 
@@ -269,6 +272,18 @@ fn api_logout(cookie: Option<&str>, sessions: &Sessions) -> Resp {
     );
     let h = Header::from_bytes(&b"Set-Cookie"[..], expired.as_bytes()).unwrap();
     json_resp_headers(200, &json!({ "ok": true }), vec![h])
+}
+
+fn file_size(path: &str) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+/// 返回工程版本（编译期 CARGO_PKG_VERSION）与数据库占用字节数（含 -wal/-shm）。
+fn api_status(db_path: &str) -> Resp {
+    let mut total = file_size(db_path);
+    total += file_size(&format!("{}-wal", db_path));
+    total += file_size(&format!("{}-shm", db_path));
+    json_resp(200, &json!({ "version": env!("CARGO_PKG_VERSION"), "dbBytes": total }))
 }
 
 fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {

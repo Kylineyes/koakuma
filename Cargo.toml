@@ -1,6 +1,6 @@
 [package]
 name = "koakuma"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "面向 OpenWrt 的分设备网络流量采集守护进程"
 license = "MIT"
