@@ -142,6 +142,7 @@ var clearAllBtn = document.getElementById('clear-all-btn');
 var rangeSelect = document.getElementById('range-select');
 var modeSelect = document.getElementById('mode-select');
 var metricSelect = document.getElementById('metric-select');
+var valueSelect = document.getElementById('value-select');
 var metricField = document.getElementById('metric-field');
 var refreshBtn = document.getElementById('refresh-btn');
 var applyBtn = document.getElementById('apply-btn');
@@ -177,6 +178,8 @@ var selectedIds = [];
 var mode = 'separate';
 // 叠加查看时的指标：rx（下载）/ tx（上传）/ both（下载+上传）。
 var overlayMetric = 'both';
+// 数值显示方式：rate（速率，字节/秒）/ cumulative（累计，字节总量）。
+var valueMode = 'rate';
 
 // 当前图表实例（分开查看时每台设备一个；叠加查看时仅一个）。
 var charts = [];
@@ -688,7 +691,9 @@ function baseOptions() {
         ticks: {
           maxTicksLimit: 6,
           color: themeToken('--muted'),
-          callback: function (value) { return formatRate(value); }
+          callback: function (value) {
+            return valueMode === 'cumulative' ? formatBytes(value) : formatRate(value);
+          }
         },
         grid: { color: themeToken('--chart-grid') }
       }
@@ -702,7 +707,9 @@ function baseOptions() {
             return formatDateTime(items[0].parsed.x);
           },
           label: function (item) {
-            return item.dataset.label + '：' + formatRate(item.parsed.y);
+            var v = item.parsed.y;
+            var text = valueMode === 'cumulative' ? formatBytes(v) : formatRate(v);
+            return item.dataset.label + '：' + text;
           }
         }
       }
@@ -727,16 +734,42 @@ function makeDataset(label, color, dashed) {
 }
 
 // 将接口 points（[[ts,rx,tx], ...]）拆成 rx / tx 两个 {x,y} 数组。
+// 速率为各采样点的字节/秒；累计模式按相邻采样点时间差积分出字节总量（首点从 0 起算）。
 function buildPointArrays(points) {
   var rx = [];
   var tx = [];
   if (!Array.isArray(points)) { return { rx: rx, tx: tx }; }
+  var cumulative = (valueMode === 'cumulative');
+  var accRx = 0;
+  var accTx = 0;
+  var prevTs = null;
+  var prevRx = 0;
+  var prevTx = 0;
   for (var i = 0; i < points.length; i++) {
     var p = points[i];
     if (!p || p.length < 3) { continue; }
-    var x = Number(p[0]) * 1000;
-    rx.push({ x: x, y: Number(p[1]) });
-    tx.push({ x: x, y: Number(p[2]) });
+    var tsSec = Number(p[0]);
+    var x = tsSec * 1000;
+    var rxRate = Number(p[1]) || 0;
+    var txRate = Number(p[2]) || 0;
+    if (cumulative) {
+      if (prevTs !== null) {
+        var dt = tsSec - prevTs;
+        if (dt > 0) {
+          // 使用区间前值做矩形积分，近似该采样周期内传输量。
+          accRx += prevRx * dt;
+          accTx += prevTx * dt;
+        }
+      }
+      rx.push({ x: x, y: accRx });
+      tx.push({ x: x, y: accTx });
+      prevTs = tsSec;
+      prevRx = rxRate;
+      prevTx = txRate;
+    } else {
+      rx.push({ x: x, y: rxRate });
+      tx.push({ x: x, y: txRate });
+    }
   }
   return { rx: rx, tx: tx };
 }
@@ -788,7 +821,7 @@ function createChartCard(titleText, datasets, color) {
 
 // 依据当前 mode / 选中设备构建图表骨架（仅当签名发生变化时才重建）。
 function chartsSignature(ids) {
-  return mode + '|' + ids.join(',') + '|' + (mode === 'overlay' ? overlayMetric : '-');
+  return mode + '|' + ids.join(',') + '|' + (mode === 'overlay' ? overlayMetric : '-') + '|' + valueMode;
 }
 
 function ensureCharts(ids) {
@@ -961,6 +994,12 @@ function onMetricChange() {
   }
 }
 
+// 切换数值显示方式（速率 / 累计）：会重建图表以更新 Y 轴与提示格式。
+function onValueChange() {
+  valueMode = valueSelect ? valueSelect.value : 'rate';
+  reloadSeriesForSelection();
+}
+
 // 应用自定义时间段：此模式下历史曲线停止自动刷新。
 function applyCustomRange() {
   var f = parseInputSecs(fromInput);
@@ -977,8 +1016,10 @@ function resetChart() {
   customMode = false;
   mode = 'separate';
   overlayMetric = 'both';
+  valueMode = 'rate';
   if (modeSelect) { modeSelect.value = 'separate'; }
   if (metricSelect) { metricSelect.value = 'both'; }
+  if (valueSelect) { valueSelect.value = 'rate'; }
   if (metricField) { metricField.hidden = true; }
   if (rangeSelect) { rangeSelect.selectedIndex = 0; }
 
@@ -1032,6 +1073,8 @@ async function initDashboard() {
   if (metricField) { metricField.hidden = true; }
   mode = 'separate';
   overlayMetric = 'both';
+  valueMode = 'rate';
+  if (valueSelect) { valueSelect.value = 'rate'; }
 
   // 预填自定义时间段为最近 1 小时，方便直接查看（初始模式仍为预设自动刷新）。
   var now = new Date();
@@ -1045,6 +1088,7 @@ async function initDashboard() {
   if (rangeSelect) { rangeSelect.addEventListener('change', onRangeChange); }
   if (modeSelect) { modeSelect.addEventListener('change', onModeChange); }
   if (metricSelect) { metricSelect.addEventListener('change', onMetricChange); }
+  if (valueSelect) { valueSelect.addEventListener('change', onValueChange); }
   [selectAllBtn, clearAllBtn, refreshBtn, applyBtn, resetBtn].forEach(bindPressSpring);
   if (selectAllBtn) { selectAllBtn.addEventListener('click', selectAllDevices); }
   if (clearAllBtn) { clearAllBtn.addEventListener('click', clearAllDevices); }
