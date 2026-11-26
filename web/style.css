@@ -181,6 +181,11 @@ h2 { margin: 0; font-size: var(--fs-control); line-height: 1.4; font-weight: 700
 .metric { position: relative; overflow: hidden; padding: 22px 24px 19px; }
 .metric::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--rx); }
 .metric-tx::before { background: var(--tx); }
+.metric-wan-rx::before { background: var(--rx); }
+.metric-wan-tx::before { background: var(--tx); }
+.metric-tag.wan { color: var(--primary); background: var(--secondary); }
+.chart-subhead { font-size: var(--fs-body); font-weight: 650; color: var(--text-secondary); margin: 18px 0 10px; }
+.chart-subhead:first-of-type { margin-top: 0; }
 .metric-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .metric-title { color: var(--text-secondary); font-size: var(--fs-body); }
 .metric-tag { font-size: var(--fs-caption); font-weight: 750; letter-spacing: .08em; padding: 2px 8px; border-radius: 6px; }

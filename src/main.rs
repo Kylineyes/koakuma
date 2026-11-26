@@ -108,12 +108,18 @@ fn main() {
     let mut agg = aggregator::Aggregator::new(now_secs());
     let mut last_retention = 0i64;
     let mut sample_count: u64 = 0;
+    let mut wan = WanTracker::new();
 
     while !STOP.load(Ordering::SeqCst) {
         let ts = now_secs();
         match run_sample(&conn, &cfg, &mut agg, &mut aliases) {
             Ok(_n) => {}
             Err(e) => log(&format!("采样失败：{}", e)),
+        }
+        // 路由器出口（WAN）流量：与设备采样同一周期落库
+        match wan.sample(&conn, &cfg, &mut agg, ts) {
+            Ok(_) => {}
+            Err(e) => log(&format!("出口流量采样失败：{}", e)),
         }
         sample_count += 1;
         // 每 30 次采样（约 5 分钟）快照一次当前未满桶，降低异常退出（SIGKILL/断电）时的数据丢失
@@ -137,6 +143,74 @@ fn main() {
     log("收到停止信号，落库未满桶并退出…");
     let _ = agg.flush_all(&conn);
     log("koakuma 已退出");
+}
+
+/// 路由器出口（WAN）在 devices 表中使用的保留 MAC 与显示名。
+const WAN_MAC: &str = "__wan__";
+const WAN_NAME: &str = "路由器出口（WAN）";
+const WAN_IP: &str = "wan";
+
+/// WAN 出口流量追踪：保存上一次的接口累计计数器与时间戳，用于差分求速率。
+struct WanTracker {
+    iface: String,
+    prev: Option<(i64, u64, u64)>,
+}
+
+impl WanTracker {
+    fn new() -> Self {
+        Self { iface: String::new(), prev: None }
+    }
+
+    /// 采样一次出口流量：读取接口累计字节，按时间差求上下行速率并写入 A 表与聚合器。
+    /// 首个采样点无前值，仅记录基准（rate=0），从第二次起得到真实速率。
+    fn sample(
+        &mut self,
+        conn: &rusqlite::Connection,
+        cfg: &config::Config,
+        agg: &mut aggregator::Aggregator,
+        ts: i64,
+    ) -> Result<(), String> {
+        if !cfg.wan_enabled {
+            return Ok(());
+        }
+        // 解析出口接口名：显式配置优先，否则动态查询，最后回退 pppoe-wan。
+        if self.iface.is_empty() {
+            self.iface = if !cfg.wan_iface.trim().is_empty() {
+                cfg.wan_iface.trim().to_string()
+            } else {
+                collector::resolve_wan_iface().unwrap_or_else(|| "pppoe-wan".to_string())
+            };
+        }
+        let counters = match collector::read_iface_counters(&self.iface) {
+            Ok(c) => c,
+            Err(_) => {
+                // 接口偶发不存在（pppoe 重拨等）：清空接口名以便下次重新解析
+                self.iface.clear();
+                return Ok(());
+            }
+        };
+
+        let (mut rx_rate, mut tx_rate) = (0i64, 0i64);
+        if let Some((prev_ts, prev_rx, prev_tx)) = self.prev {
+            let dt = ts - prev_ts;
+            if dt > 0 {
+                // 计数器回绕/重置（比前值小）时按 0 处理，避免负数。
+                let d_rx = counters.rx_bytes.saturating_sub(prev_rx) as i64;
+                let d_tx = counters.tx_bytes.saturating_sub(prev_tx) as i64;
+                rx_rate = d_rx / dt;
+                tx_rate = d_tx / dt;
+            }
+        }
+        self.prev = Some((ts, counters.rx_bytes, counters.tx_bytes));
+
+        let dev_id = db::upsert_device(conn, WAN_MAC, WAN_IP, WAN_NAME, ts)
+            .map_err(|e| format!("upsert 出口设备失败：{}", e))?;
+        db::insert_a(conn, dev_id, ts, rx_rate, tx_rate)
+            .map_err(|e| format!("写出口 A 表失败：{}", e))?;
+        agg.ingest(conn, dev_id, ts, rx_rate, tx_rate)
+            .map_err(|e| format!("出口聚合落库失败：{}", e))?;
+        Ok(())
+    }
 }
 
 /// 采样一次：读 trafficd → 更新设备字典 → 写 A 表 → 滚动聚合。返回写入的活跃设备数。

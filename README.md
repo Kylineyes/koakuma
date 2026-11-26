@@ -116,6 +116,9 @@ retention:
   a_days: 3
   b_days: 35
   c_days: 180
+wan:
+  enabled: true                 # 统计路由器出口（WAN）上下行总流量
+  interface: ""                 # 出口接口名；留空自动经 ubus 解析，失败回退 pppoe-wan
 aliases:
   path: "/data/other_vol/koakuma/aliases.conf"
 ```
@@ -134,7 +137,7 @@ aliases:
 | `--ubus-json <路径>` | 从本地文件读取 trafficd JSON（本地调试用） | 无 |
 | `--aliases <路径>` | 设备别名配置（MAC=名称） | `/data/other_vol/koakuma/aliases.conf` |
 
-以上均可用环境变量覆盖：`KOAKUMA_DB`、`KOAKUMA_INTERVAL`、`KOAKUMA_LISTEN`、`KOAKUMA_A_RETAIN_DAYS`、`KOAKUMA_B_RETAIN_DAYS`、`KOAKUMA_C_RETAIN_DAYS`、`KOAKUMA_UBUS_JSON_FILE`、`KOAKUMA_ALIASES`、`KOAKUMA_CONFIG`、`KOAKUMA_AUTH_ENABLED`、`KOAKUMA_AUTH_USER`、`KOAKUMA_AUTH_PASSWORD`。
+以上均可用环境变量覆盖：`KOAKUMA_DB`、`KOAKUMA_INTERVAL`、`KOAKUMA_LISTEN`、`KOAKUMA_A_RETAIN_DAYS`、`KOAKUMA_B_RETAIN_DAYS`、`KOAKUMA_C_RETAIN_DAYS`、`KOAKUMA_UBUS_JSON_FILE`、`KOAKUMA_ALIASES`、`KOAKUMA_CONFIG`、`KOAKUMA_AUTH_ENABLED`、`KOAKUMA_AUTH_USER`、`KOAKUMA_AUTH_PASSWORD`、`KOAKUMA_WAN_ENABLED`、`KOAKUMA_WAN_IFACE`。
 
 ### 设备别名（显示友好名称）
 
@@ -168,6 +171,8 @@ chmod +x /etc/init.d/koakuma
 - `GET /api/devices`：设备清单（id / mac / ip / name / last_seen）
 - `GET /api/latest`：最近一次采样的每设备实时速率（字节/秒）
 - `GET /api/series?dev=<id>&layer=<a|b|c>&from=<unix>&to=<unix>`：指定设备与精度层的历史序列
+- `GET /api/wan`：路由器出口（WAN）当前速率与累计字节 `{available, ts, rx_rate, tx_rate, rx_total, tx_total}`
+- `GET /api/wan/series?layer=<a|b|c>&from=<unix>&to=<unix>`：路由器出口流量的历史序列
 - `GET /api/session`：返回 `{authRequired, authenticated}`
 - `POST /api/login`：JSON `{username,password}`，成功后下发会话 Cookie
 - `POST /api/logout`：清除会话
@@ -180,6 +185,7 @@ chmod +x /etc/init.d/koakuma
 
 - 设备多选：按芯片勾选，支持全选/清空；自动标记「★本机」并默认选中；
 - 实时速率：所选设备的下载/上传速率（多选显示合计），每 5 秒刷新；
+- 出口流量：单独统计路由器自身 WAN 出口的下载/上传速率与累计总量（区别于各内网设备流量），并有独立历史曲线；
 - 历史曲线：分开查看（每设备一图）或叠加查看（同图多色），叠加时可按下载/上传过滤；
 - 时间范围：预设范围自动刷新；也可自定义时间段查看（此时暂停自动刷新，点「重置」恢复）；
 - 明暗主题：默认跟随系统，可手动切换并记忆。

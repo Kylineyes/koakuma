@@ -33,6 +33,10 @@ pub struct Config {
     pub auth_username: String,
     /// 登录密码
     pub auth_password: String,
+    /// 是否统计路由器出口（WAN）上下行总流量
+    pub wan_enabled: bool,
+    /// WAN 出口接口名（为空时自动通过 ubus 解析，无法解析则回退 pppoe-wan）
+    pub wan_iface: String,
     /// 实际加载的配置文件路径（不存在则为 None，仅用于日志）
     pub config_file: Option<String>,
 }
@@ -52,6 +56,8 @@ impl Default for Config {
             auth_enabled: false,
             auth_username: "admin".to_string(),
             auth_password: String::new(),
+            wan_enabled: true,
+            wan_iface: String::new(),
             config_file: None,
         }
     }
@@ -131,6 +137,14 @@ impl Config {
         }
         if let Ok(v) = env::var("KOAKUMA_AUTH_PASSWORD") {
             cfg.auth_password = v;
+        }
+        if let Ok(v) = env::var("KOAKUMA_WAN_ENABLED") {
+            if let Some(b) = parse_bool(&v) {
+                cfg.wan_enabled = b;
+            }
+        }
+        if let Ok(v) = env::var("KOAKUMA_WAN_IFACE") {
+            cfg.wan_iface = v;
         }
 
         // 3) 命令行参数（覆盖环境变量）
@@ -248,6 +262,16 @@ impl Config {
         }
         if let Some(v) = get("auth", "password") {
             self.auth_password = v;
+        }
+        if let Some(v) = get("wan", "enabled") {
+            if let Some(b) = parse_bool(&v) {
+                self.wan_enabled = b;
+            }
+        }
+        if let Some(v) = get("wan", "interface") {
+            if !v.trim().is_empty() {
+                self.wan_iface = v.trim().to_string();
+            }
         }
         Ok(())
     }
