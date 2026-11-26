@@ -192,6 +192,8 @@ fn handle(
         "/api/devices" => api_devices(db_path, client_ip),
         "/api/latest" => api_latest(db_path),
         "/api/series" => api_series(db_path, url),
+        "/api/wan" => api_wan(db_path),
+        "/api/wan/series" => api_wan_series(db_path, url),
         "/api/device/rename" => api_rename(method, body, db_path),
         _ => respond_body("text/plain; charset=utf-8", 404, "未找到页面"),
     }
@@ -317,6 +319,7 @@ fn api_devices(db_path: &str, client_ip: Option<&str>) -> Resp {
         let mut stmt = conn.prepare(
             "SELECT id, mac, COALESCE(ip,''), COALESCE(name,''), first_seen, last_seen
              FROM devices
+             WHERE mac <> '__wan__'
              ORDER BY (name IS NULL OR name = ''), name COLLATE NOCASE, id",
         )?;
         let it = stmt.query_map([], |r| {
@@ -361,7 +364,7 @@ fn api_latest(db_path: &str) -> Resp {
         let mut stmt = conn.prepare(
             "SELECT a.dev_id, d.mac, COALESCE(d.ip,''), COALESCE(d.name,''), a.rx_rate, a.tx_rate
              FROM a_raw a JOIN devices d ON d.id = a.dev_id
-             WHERE a.ts = ?1
+             WHERE a.ts = ?1 AND d.mac <> '__wan__'
              ORDER BY (d.name IS NULL OR d.name = ''), d.name COLLATE NOCASE, a.dev_id",
         )?;
         let it = stmt.query_map(params![tmax], |r| {
@@ -386,6 +389,27 @@ fn api_latest(db_path: &str) -> Resp {
     }
 }
 
+/// 按采样层查询某设备在 [from,to] 内的序列点（[[ts, rx, tx], ...]）。
+fn series_points(conn: &rusqlite::Connection, dev: i64, layer: &str, from: i64, to: i64) -> rusqlite::Result<Vec<Value>> {
+    let sql = match layer {
+        "a" => "SELECT ts, rx_rate, tx_rate FROM a_raw WHERE dev_id = ?1 AND ts >= ?2 AND ts <= ?3 ORDER BY ts",
+        "b" => "SELECT ts, rx_avg, tx_avg FROM b_min WHERE dev_id = ?1 AND ts >= ?2 AND ts <= ?3 ORDER BY ts",
+        _ => "SELECT ts, rx_avg, tx_avg FROM c_10min WHERE dev_id = ?1 AND ts >= ?2 AND ts <= ?3 ORDER BY ts",
+    };
+    let mut stmt = conn.prepare(sql)?;
+    let it = stmt.query_map(params![dev, from, to], |r| {
+        let ts: i64 = r.get(0)?;
+        let rx: i64 = r.get(1)?;
+        let tx: i64 = r.get(2)?;
+        Ok(json!([ts, rx, tx]))
+    })?;
+    let mut v = Vec::new();
+    for x in it {
+        v.push(x?);
+    }
+    Ok(v)
+}
+
 fn api_series(db_path: &str, url: &str) -> Resp {
     let p = query_params(url);
     let dev: i64 = match p.get("dev").and_then(|s| s.parse::<i64>().ok()) {
@@ -393,36 +417,96 @@ fn api_series(db_path: &str, url: &str) -> Resp {
         None => return json_resp(400, &json!({"error": "缺少或非法的 dev 参数"})),
     };
     let layer = p.get("layer").cloned().unwrap_or_else(|| "b".to_string());
+    if layer != "a" && layer != "b" && layer != "c" {
+        return json_resp(400, &json!({"error": "layer 只能为 a / b / c"}));
+    }
     let to = p.get("to").and_then(|s| s.parse::<i64>().ok()).unwrap_or_else(now_secs);
     let from = p.get("from").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
-
-    let sql = match layer.as_str() {
-        "a" => "SELECT ts, rx_rate, tx_rate FROM a_raw WHERE dev_id = ?1 AND ts >= ?2 AND ts <= ?3 ORDER BY ts",
-        "b" => "SELECT ts, rx_avg, tx_avg FROM b_min WHERE dev_id = ?1 AND ts >= ?2 AND ts <= ?3 ORDER BY ts",
-        "c" => "SELECT ts, rx_avg, tx_avg FROM c_10min WHERE dev_id = ?1 AND ts >= ?2 AND ts <= ?3 ORDER BY ts",
-        _ => return json_resp(400, &json!({"error": "layer 只能为 a / b / c"})),
-    };
 
     let conn = match db::open(db_path) {
         Ok(c) => c,
         Err(e) => return json_resp(500, &json!({"error": format!("打开数据库失败：{}", e)})),
     };
-    let res = (|| -> rusqlite::Result<Vec<Value>> {
-        let mut stmt = conn.prepare(sql)?;
-        let it = stmt.query_map(params![dev, from, to], |r| {
-            let ts: i64 = r.get(0)?;
-            let rx: i64 = r.get(1)?;
-            let tx: i64 = r.get(2)?;
-            Ok(json!([ts, rx, tx]))
-        })?;
-        let mut v = Vec::new();
-        for x in it {
-            v.push(x?);
+    match series_points(&conn, dev, &layer, from, to) {
+        Ok(points) => json_resp(200, &json!({"dev": dev, "layer": layer, "points": points})),
+        Err(e) => json_resp(500, &json!({"error": format!("查询失败：{}", e)})),
+    }
+}
+
+/// 路由器出口（WAN）当前速率与累计字节。
+fn api_wan(db_path: &str) -> Resp {
+    let conn = match db::open(db_path) {
+        Ok(c) => c,
+        Err(e) => return json_resp(500, &json!({"error": format!("打开数据库失败：{}", e)})),
+    };
+    let res = (|| -> rusqlite::Result<Value> {
+        let id = match db::find_device_id_by_mac(&conn, "__wan__")? {
+            Some(v) => v,
+            None => return Ok(json!({"available": false, "ts": 0, "rx_rate": 0, "tx_rate": 0, "rx_total": 0, "tx_total": 0})),
+        };
+        let latest: Option<(i64, i64, i64)> = conn
+            .query_row(
+                "SELECT ts, rx_rate, tx_rate FROM a_raw WHERE dev_id = ?1 ORDER BY ts DESC LIMIT 1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .ok();
+        // 累计总字节：对各采样点 rate*dt 求和（用相邻时间差做矩形积分）。
+        let mut stmt = conn.prepare("SELECT ts, rx_rate, tx_rate FROM a_raw WHERE dev_id = ?1 ORDER BY ts")?;
+        let it = stmt.query_map(params![id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))?;
+        let (mut rx_total, mut tx_total) = (0i64, 0i64);
+        let mut prev: Option<(i64, i64, i64)> = None;
+        for row in it {
+            let (ts, rx, tx) = row?;
+            if let Some((pts, prx, ptx)) = prev {
+                let dt = ts - pts;
+                if dt > 0 {
+                    rx_total += prx.saturating_mul(dt);
+                    tx_total += ptx.saturating_mul(dt);
+                }
+            }
+            prev = Some((ts, rx, tx));
         }
-        Ok(v)
+        let (ts, rx_rate, tx_rate) = latest.unwrap_or((0, 0, 0));
+        Ok(json!({
+            "available": true,
+            "ts": ts,
+            "rx_rate": rx_rate,
+            "tx_rate": tx_rate,
+            "rx_total": rx_total,
+            "tx_total": tx_total,
+        }))
     })();
     match res {
-        Ok(points) => json_resp(200, &json!({"dev": dev, "layer": layer, "points": points})),
+        Ok(v) => json_resp(200, &v),
+        Err(e) => json_resp(500, &json!({"error": format!("查询失败：{}", e)})),
+    }
+}
+
+/// 路由器出口（WAN）历史序列（复用分层表）。
+fn api_wan_series(db_path: &str, url: &str) -> Resp {
+    let p = query_params(url);
+    let layer = p.get("layer").cloned().unwrap_or_else(|| "b".to_string());
+    if layer != "a" && layer != "b" && layer != "c" {
+        return json_resp(400, &json!({"error": "layer 只能为 a / b / c"}));
+    }
+    let to = p.get("to").and_then(|s| s.parse::<i64>().ok()).unwrap_or_else(now_secs);
+    let from = p.get("from").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+    let conn = match db::open(db_path) {
+        Ok(c) => c,
+        Err(e) => return json_resp(500, &json!({"error": format!("打开数据库失败：{}", e)})),
+    };
+    let res = (|| -> rusqlite::Result<Value> {
+        match db::find_device_id_by_mac(&conn, "__wan__")? {
+            None => Ok(json!({"available": false, "layer": layer, "points": []})),
+            Some(id) => {
+                let points = series_points(&conn, id, &layer, from, to)?;
+                Ok(json!({"available": true, "layer": layer, "points": points}))
+            }
+        }
+    })();
+    match res {
+        Ok(v) => json_resp(200, &v),
         Err(e) => json_resp(500, &json!({"error": format!("查询失败：{}", e)})),
     }
 }

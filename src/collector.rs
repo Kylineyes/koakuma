@@ -115,6 +115,67 @@ pub fn parse(json: &str) -> Result<Vec<DeviceSample>, String> {
     Ok(result)
 }
 
+/// WAN（路由器出口）接口的累计收发字节计数器快照。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IfaceCounters {
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+}
+
+/// 从 /proc/net/dev 文本中解析指定接口的累计收发字节；找不到接口返回 None。
+pub fn parse_proc_net_dev(text: &str, iface: &str) -> Option<IfaceCounters> {
+    for line in text.lines() {
+        let (name, rest) = match line.split_once(':') {
+            Some(v) => v,
+            None => continue,
+        };
+        if name.trim() != iface {
+            continue;
+        }
+        let cols: Vec<&str> = rest.split_whitespace().collect();
+        // 每行依次为 rx: bytes packets errs drop fifo frame compressed multicast，
+        // 然后 tx: bytes packets ...；bytes 分别是第 0 与第 8 个字段。
+        if cols.len() < 9 {
+            continue;
+        }
+        let rx = cols[0].parse::<u64>().ok()?;
+        let tx = cols[8].parse::<u64>().ok()?;
+        return Some(IfaceCounters { rx_bytes: rx, tx_bytes: tx });
+    }
+    None
+}
+
+/// 读取指定网络接口的累计收发字节（读取 /proc/net/dev）。
+pub fn read_iface_counters(iface: &str) -> Result<IfaceCounters, String> {
+    let text = std::fs::read_to_string("/proc/net/dev")
+        .map_err(|e| format!("读取 /proc/net/dev 失败：{}", e))?;
+    parse_proc_net_dev(&text, iface)
+        .ok_or_else(|| format!("未找到网络接口 {}（可能未连接）", iface))
+}
+
+/// 解析 ubus network.interface.wan status 的 JSON，取 l3_device 作为 WAN 出口接口名。
+pub fn parse_wan_iface(json: &str) -> Option<String> {
+    let root: Value = serde_json::from_str(json).ok()?;
+    root.get("l3_device")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// 通过 ubus 动态解析 WAN 逻辑接口对应的设备名（如 pppoe-wan / eth0.2）。
+/// 失败时回退到 None，由调用方使用配置的默认接口名。
+pub fn resolve_wan_iface() -> Option<String> {
+    let out = Command::new("ubus")
+        .args(["call", "network.interface.wan", "status"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(out.stdout).ok()?;
+    parse_wan_iface(&text)
+}
+
 /// 采集一次：读取并解析，返回活跃设备列表。
 pub fn collect(ubus_json_file: &Option<String>) -> Result<Vec<DeviceSample>, String> {
     let raw = read_raw_json(ubus_json_file)?;
@@ -148,5 +209,28 @@ mod tests {
         assert!(v.iter().any(|s| s.ip == "10.0.0.8" && s.rx_rate == 30 && s.tx_rate == 3));
         // 空主机名规整为空串
         assert!(v.iter().any(|s| s.ip == "10.0.0.7" && s.name.is_empty()));
+    }
+
+    const PROC: &str = r#"Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 100 2 0 0 0 0 0 0 200 2 0 0 0 0 0 0
+pppoe-wan: 478217281841 454984843 0 275 0 0 0 0 422206499108 424876108 0 0 0 0 0 0
+br-lan: 34399127763612 36146857310 0 16 0 0 0 26479462 20752136011685 28163088904 0 0 0 0 0 0
+"#;
+
+    #[test]
+    fn parses_iface_counters() {
+        let c = parse_proc_net_dev(PROC, "pppoe-wan").unwrap();
+        assert_eq!(c.rx_bytes, 478217281841);
+        assert_eq!(c.tx_bytes, 422206499108);
+        assert!(parse_proc_net_dev(PROC, "nope").is_none());
+    }
+
+    #[test]
+    fn parses_wan_iface() {
+        let j = r#"{"up":true,"l3_device":"pppoe-wan","device":"eth0.1","proto":"pppoe"}"#;
+        assert_eq!(parse_wan_iface(j).as_deref(), Some("pppoe-wan"));
+        assert!(parse_wan_iface("{}").is_none());
+        assert!(parse_wan_iface(r#"{"l3_device":""}"#).is_none());
     }
 }

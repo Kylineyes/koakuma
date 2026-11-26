@@ -24,5 +24,11 @@ retention:
   b_days: 35
   c_days: 180
 
+wan:
+  # 是否统计路由器自身出口（WAN）的上下行总流量
+  enabled: true
+  # 出口接口名；留空则自动通过 ubus 解析（如 pppoe-wan / eth0.2），解析失败回退 pppoe-wan
+  interface: ""
+
 aliases:
   path: "/data/other_vol/koakuma/aliases.conf"

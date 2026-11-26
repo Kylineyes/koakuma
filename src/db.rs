@@ -82,6 +82,17 @@ pub fn upsert_device(conn: &Connection, mac: &str, ip: &str, name: &str, now: i6
     Ok(id)
 }
 
+/// 按 MAC 查找设备 id；不存在返回 None。
+pub fn find_device_id_by_mac(conn: &Connection, mac: &str) -> Result<Option<i64>> {
+    let mut stmt = conn.prepare("SELECT id FROM devices WHERE mac = ?1")?;
+    let mut rows = stmt.query(params![mac])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
 /// 修改设备显示名（写入数据库并标记为自定义名称，避免被后续采样覆盖）。
 /// 传入空白名称表示取消自定义、恢复自动名称。
 pub fn rename_device(conn: &Connection, id: i64, name: &str) -> Result<bool> {

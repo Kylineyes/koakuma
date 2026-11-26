@@ -106,6 +106,10 @@ function applyTheme(theme, persist) {
     chartsKey = '';
     refreshSeries();
   }
+  if (wanChart) {
+    wanChartsKey = '';
+    refreshWanSeries();
+  }
 }
 function initTheme() {
   applyTheme(document.documentElement.dataset.theme || 'light', false);
@@ -156,6 +160,12 @@ var txTitle = document.getElementById('tx-title');
 var chartHint = document.getElementById('chart-hint');
 var statusEl = document.getElementById('status');
 var chartsContainer = document.getElementById('charts-container');
+var wanRxValue = document.getElementById('wan-rx-value');
+var wanTxValue = document.getElementById('wan-tx-value');
+var wanRxTotal = document.getElementById('wan-rx-total');
+var wanTxTotal = document.getElementById('wan-tx-total');
+var wanChartsContainer = document.getElementById('wan-charts-container');
+var wanChartHint = document.getElementById('wan-chart-hint');
 var themeToggle = document.getElementById('theme-toggle');
 var themeLabel = document.getElementById('theme-label');
 var footerDbEl = document.getElementById('footer-db');
@@ -185,6 +195,9 @@ var valueMode = 'rate';
 var charts = [];
 // 当前图表骨架签名，用于判断是否需要重建 DOM 与图表实例。
 var chartsKey = '';
+// 路由器出口（WAN）图表实例与骨架签名。
+var wanChart = null;
+var wanChartsKey = '';
 
 var latestTimer = null;
 var seriesTimer = null;
@@ -893,6 +906,120 @@ function updateOverlayData(ids, results) {
   charts[0].update('none');
 }
 
+// —— 路由器出口（WAN）流量：实时卡片 + 历史曲线 ——
+
+// 将 points（[[ts,rx,tx],...]）转为图表数据；累计模式按相邻点时间差积分（首点 0）。
+function buildWanPointArrays(points) {
+  var rx = [];
+  var tx = [];
+  if (!Array.isArray(points)) { return { rx: rx, tx: tx }; }
+  var cumulative = (valueMode === 'cumulative');
+  var accRx = 0, accTx = 0, prevTs = null, prevRx = 0, prevTx = 0;
+  for (var i = 0; i < points.length; i++) {
+    var p = points[i];
+    if (!p || p.length < 3) { continue; }
+    var tsSec = Number(p[0]);
+    var x = tsSec * 1000;
+    var rxRate = Number(p[1]) || 0;
+    var txRate = Number(p[2]) || 0;
+    if (cumulative) {
+      if (prevTs !== null) {
+        var dt = tsSec - prevTs;
+        if (dt > 0) { accRx += prevRx * dt; accTx += prevTx * dt; }
+      }
+      rx.push({ x: x, y: accRx });
+      tx.push({ x: x, y: accTx });
+      prevTs = tsSec; prevRx = rxRate; prevTx = txRate;
+    } else {
+      rx.push({ x: x, y: rxRate });
+      tx.push({ x: x, y: txRate });
+    }
+  }
+  return { rx: rx, tx: tx };
+}
+
+function setWanHint(text, isError) {
+  if (!wanChartHint) { return; }
+  wanChartHint.textContent = text || '';
+  if (isError) { wanChartHint.classList.add('error'); } else { wanChartHint.classList.remove('error'); }
+}
+
+function destroyWanChart() {
+  if (wanChart) { try { wanChart.destroy(); } catch (e) {} wanChart = null; }
+  if (wanChartsContainer) { wanChartsContainer.innerHTML = ''; }
+}
+
+// 确保 WAN 图表骨架（数值方式变化时重建以更新坐标轴格式）。
+function ensureWanChart() {
+  var sig = 'wan|' + valueMode;
+  if (sig === wanChartsKey && wanChart) { return; }
+  destroyWanChart();
+  wanChartsKey = sig;
+  if (!wanChartsContainer || typeof Chart === 'undefined') { return; }
+  var card = document.createElement('div');
+  card.className = 'chart-card';
+  var head = document.createElement('div');
+  head.className = 'chart-card-head';
+  var dot = document.createElement('span'); dot.className = 'chip-dot'; dot.style.background = RX_COLOR;
+  var title = document.createElement('span'); title.className = 'chart-card-title'; title.textContent = '路由器出口（WAN）';
+  head.appendChild(dot); head.appendChild(title); card.appendChild(head);
+  var box = document.createElement('div'); box.className = 'chart-box';
+  var canvasEl = document.createElement('canvas'); box.appendChild(canvasEl); card.appendChild(box);
+  wanChartsContainer.appendChild(card);
+  if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) { card.classList.add('chart-enter'); }
+  var rxDs = makeDataset('出口下载 rx', RX_COLOR, false);
+  var txDs = makeDataset('出口上传 tx', TX_COLOR, false);
+  wanChart = new Chart(canvasEl.getContext('2d'), { type: 'line', data: { datasets: [rxDs, txDs] }, options: baseOptions() });
+}
+
+async function refreshWan() {
+  try {
+    var res = await fetch('/api/wan', { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) { throw new Error('HTTP ' + res.status); }
+    var d = await res.json();
+    if (!d || d.available !== true) {
+      if (wanRxValue) { wanRxValue.textContent = '—'; }
+      if (wanTxValue) { wanTxValue.textContent = '—'; }
+      if (wanRxTotal) { wanRxTotal.textContent = '—'; }
+      if (wanTxTotal) { wanTxTotal.textContent = '—'; }
+      return;
+    }
+    if (wanRxValue) { wanRxValue.textContent = formatRate(d.rx_rate); }
+    if (wanTxValue) { wanTxValue.textContent = formatRate(d.tx_rate); }
+    if (wanRxTotal) { wanRxTotal.textContent = formatBytes(d.rx_total); }
+    if (wanTxTotal) { wanTxTotal.textContent = formatBytes(d.tx_total); }
+  } catch (err) {
+    if (wanRxValue) { wanRxValue.textContent = '—'; }
+    if (wanTxValue) { wanTxValue.textContent = '—'; }
+  }
+}
+
+async function refreshWanSeries() {
+  var view = computeView();
+  if (view.error) { setWanHint(view.error, true); return; }
+  if (typeof Chart === 'undefined') { return; }
+  ensureWanChart();
+  if (!wanChart) { return; }
+  try {
+    var url = '/api/wan/series?layer=' + encodeURIComponent(view.layer) + '&from=' + view.from + '&to=' + view.to;
+    var res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) { throw new Error('HTTP ' + res.status); }
+    var d = await res.json();
+    var points = (d && d.available === true && Array.isArray(d.points)) ? d.points : [];
+    var arr = buildWanPointArrays(points);
+    wanChart.data.datasets[0].borderColor = RX_COLOR; wanChart.data.datasets[0].backgroundColor = RX_COLOR;
+    wanChart.data.datasets[1].borderColor = TX_COLOR; wanChart.data.datasets[1].backgroundColor = TX_COLOR;
+    wanChart.data.datasets[0].data = arr.rx;
+    wanChart.data.datasets[1].data = arr.tx;
+    wanChart.update('none');
+    var suffix = autoRefreshOn ? '（自动刷新中）' : '（已暂停自动刷新）';
+    if (points.length === 0) { setWanHint('该时间段内暂无出口流量数据。' + suffix, false); }
+    else { setWanHint('出口流量 · ' + points.length + ' 个数据点 · ' + view.label + suffix, false); }
+  } catch (err) {
+    setWanHint(err && err.message ? err.message : '出口流量加载失败', true);
+  }
+}
+
 // 按当前视图并行拉取所有已选设备的历史序列并重绘。
 async function refreshSeries() {
   var ids = getSelectedIds();
@@ -964,8 +1091,9 @@ function reloadSeriesForSelection() {
   var view = computeView();
   autoRefreshOn = (!view.error && !customMode && view.span <= REALTIME_MAX_SPAN);
   refreshSeries();
+  refreshWanSeries();
   if (autoRefreshOn) {
-    seriesTimer = setInterval(refreshSeries, SERIES_INTERVAL);
+    seriesTimer = setInterval(function () { refreshSeries(); refreshWanSeries(); }, SERIES_INTERVAL);
   }
 }
 
@@ -1038,7 +1166,9 @@ function resetChart() {
 // “刷新”按钮：同时刷新实时卡片与历史曲线。
 function manualRefresh() {
   refreshLatest();
+  refreshWan();
   refreshSeries();
+  refreshWanSeries();
 }
 
 function formatBytes(n) {
@@ -1106,8 +1236,9 @@ async function initDashboard() {
   }
 
   refreshLatest();
+  refreshWan();
   reloadSeriesForSelection();
-  latestTimer = setInterval(refreshLatest, LATEST_INTERVAL);
+  latestTimer = setInterval(function () { refreshLatest(); refreshWan(); }, LATEST_INTERVAL);
 }
 
 // 显示登录层后仅保留主题与登录交互，不请求任何仪表盘数据。

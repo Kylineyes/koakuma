@@ -75,6 +75,25 @@
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </section>
 
+      <section class="cards wan-cards" aria-label="路由器出口流量">
+        <div class="card metric metric-wan-rx">
+          <div class="metric-head">
+            <span class="metric-title">出口下载</span>
+            <span class="metric-tag wan">WAN ↓</span>
+          </div>
+          <div class="metric-value" id="wan-rx-value">—</div>
+          <p class="metric-caption">路由器出口累计接收 <b id="wan-rx-total">—</b></p>
+        </div>
+        <div class="card metric metric-wan-tx">
+          <div class="metric-head">
+            <span class="metric-title">出口上传</span>
+            <span class="metric-tag wan">WAN ↑</span>
+          </div>
+          <div class="metric-value" id="wan-tx-value">—</div>
+          <p class="metric-caption">路由器出口累计发送 <b id="wan-tx-total">—</b></p>
+        </div>
+      </section>
+
       <section class="cards" aria-label="实时流量">
         <div class="card metric metric-rx">
           <div class="metric-head">
@@ -144,8 +163,12 @@
           </label>
           <button id="apply-btn" type="button" class="btn">查看</button>
         </div>
+        <h3 class="chart-subhead">设备流量</h3>
         <div class="charts-container" id="charts-container"></div>
         <p class="hint" id="chart-hint"></p>
+        <h3 class="chart-subhead">路由器出口（WAN）流量</h3>
+        <div class="charts-container" id="wan-charts-container"></div>
+        <p class="hint" id="wan-chart-hint"></p>
       </section>
     </main>
     <footer class="footer">
